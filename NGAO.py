@@ -62,6 +62,8 @@ class NGAO(object):
         self.simul_M1polish = eval(parser.get('general', 'simul_M1polish'))
         self.simul_wfs_noise = eval(parser.get('general', 'simul_wfs_noise'))
         
+        self.totSimulTime = eval(parser.get('general', 'totSimulTime'))
+        
         #Select M1 map
         if self.simul_M1polish:
             # self.M1_map = u'M1_print_through'     # Print-through errors.
@@ -359,16 +361,16 @@ class NGAO(object):
             # fname = 'IM'+'_fittedKLs500_S7OC03945'+'_PYR_thr%1.3f_mod%d_SAv%d_px%1.2fcm_sep%d.npz'%(pyr_thr,int(wfs.modulation),wfs.n_sspp,pixelSize*100,pyr_separation)
             #-----> Double diagonalization modes (ASM_fittedKLs_doubleDiag)
             fname = 'IM'+'_KLsDD675_S7OC0%d'%(self.Roc*1e4)+'_PYR_thr%1.3f_mod%d_SAv%d_px%1.2fcm_sep%d.npz'%(self.pyr_thr,int(self.wfs.modulation),self.wfs.n_sspp,self.pixelSize*100,self.pyr_separation)
-            fnameFull = os.path.normpath(os.path.join(RECdir,fname))
-            print(fnameFull)
+            self.fnameFull = os.path.normpath(os.path.join(RECdir,fname))
+            print(self.fnameFull)
             #TODOFR: Flag to generate or not the file
-            if not os.path.isfile(fnameFull):  
+            if not os.path.isfile(self.fnameFull):  
                 self.D_M2_MODES = self.gmt.NGWS_calibrate(self.wfs,self.gs, stroke=self.Zstroke)
                 tosave = dict(D_M2=D_M2_MODES, first_mode=self.z_first_mode, Stroke=self.Zstroke)
-                np.savez(fnameFull, **tosave)
+                np.savez(self.fnameFull, **tosave)
             else: 
-                print(u'Reading file: '+fnameFull)
-                ftemp = np.load(fnameFull)
+                print(u'Reading file: '+self.fnameFull)
+                ftemp = np.load(self.fnameFull)
                 self.D_M2_MODES = ftemp.f.D_M2
                 ftemp.close()
 
@@ -928,14 +930,14 @@ class NGAO(object):
         return np.array(ndimage.center_of_mass(myPSF) - centr_ref)*self.fp_pixscale
 
     #------------------ Estimates the SR (intensity at center of image from a normalized PSF)
-    def strehl_ratio(myPSF, centr_ref):
+    def strehl_ratio(self, myPSF, centr_ref):
         return myPSF[tuple(np.round(centr_ref).astype('int'))]
 
-    def sr_and_centroid(myPSF):
+    def sr_and_centroid(self, myPSF):
         return self.strehl_ratio(myPSF), self.psf_centroid(myPSF)
 
     # ----------------- Estimate intensity at given separation
-    def intensity_query(PSFprof, Rfvec, sep_query):
+    def intensity_query(self, PSFprof, Rfvec, sep_query):
         ss = np.where(Rfvec > sep_query)[0][0]  # index of first distance value larger than sep_query
         int_req = PSFprof[ss] + \
             (PSFprof[ss]-PSFprof[ss-1]) / (Rfvec[ss]-Rfvec[ss-1]) * (sep_query-Rfvec[ss])
@@ -1112,8 +1114,6 @@ class NGAO(object):
             clb.ax.tick_params(labelsize=12)
             print(' WF RMS: %.1f nm'%(self.gs.phaseRms()*1e9))
             print('SPP RMS: %.1f nm'%(np.std(self.gs.piston('segments'))*1e9))
-            
-            
 
         AOinit = 0 #round(0.10/Tsim)               # close the AO loop
 
@@ -1128,7 +1128,7 @@ class NGAO(object):
         else:
             #--- Timing when turbulence is simulated (longer exposures)
             Tsim = 1e-3                             # simulation sampling time [s]
-            totSimulTime = 5.0               # simulation duration [in seconds]
+            totSimulTime = self.totSimulTime        # simulation duration [in seconds]
             totSimulIter = round(totSimulTime/Tsim) # simulation duration [iterations]
 
             AOinit = 0 #round(0.10/Tsim)               # close the AO loop
@@ -1178,8 +1178,6 @@ class NGAO(object):
         else:
             OGC_all  = cp.ones((7,self.n_mode))
             
-            
-
         #---- Integrator's gain
         gAO = cp.ones((7,self.n_mode)) * 0.5
         #gAO[:,0:200] = 0.8
@@ -1220,7 +1218,7 @@ class NGAO(object):
             sr_iter = np.zeros(totSimulIter)
             im_centr_iter = np.zeros((2,totSimulIter))
         if self.save_telemetry and self.simul_variable_seeing:
-            r0_iter = np.zeros(totSimulIter)
+            self.r0_iter = np.zeros(totSimulIter)
 
         if self.do_crazy_spp:
             crazy_spp_iter = np.zeros((7,totSimulIter))
@@ -1267,14 +1265,14 @@ class NGAO(object):
             if self.simul_turb:
 
                 if self.simul_variable_seeing:
-                    atm.r0 = update_r0(jj*Tsim)
+                    self.atm.r0 = self.update_r0(jj*Tsim)
                     if self.save_telemetry:
-                        r0_iter[jj] = atm.r0
+                        self.r0_iter[jj] = self.atm.r0
                 self.atm.ray_tracing(self.gs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, jj*Tsim)
 
                 if self.do_Phase_integration:
                     if jj >= PhIntInit:
-                        atm.ray_tracing(self.imgs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, jj*Tsim)
+                        self.atm.ray_tracing(self.imgs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, jj*Tsim)
 
                 if self.eval_perf_modal_turb:
                     PhaseTur = np.squeeze(self.gs.wavefront.phase.host()) * self.GMTmask
@@ -1498,11 +1496,11 @@ class NGAO(object):
                 if jj == totSimulInit:
                     print('\nStart accumulating coro PSFs\n')
                     PSFcle = PSFcse.copy()
-                    if do_wo_coro_too == True:
+                    if do_wo_coro_too:
                         PSFle = PSFse.copy()
                 elif jj > totSimulInit:
                     PSFcle += PSFcse
-                    if do_wo_coro_too == True:
+                    if do_wo_coro_too:
                         PSFle += PSFse
 
             elif self.do_psf_le:
@@ -1526,9 +1524,9 @@ class NGAO(object):
                     save_psf_count+=1
 
             if self.save_telemetry and self.do_psf_le:
-                srse, centrse = sr_and_centroid(PSFse.get()) 
-                sr_iter[jj] = srse #strehl_ratio(PSFse.get())
-                im_centr_iter[:,jj] = centrse #psf_centroid(PSFse.get())
+                srse, centrse = self.sr_and_centroid(PSFse.get()) 
+                sr_iter[jj] = srse #self.strehl_ratio(PSFse.get())
+                im_centr_iter[:,jj] = centrse #self.psf_centroid(PSFse.get())
 
             self.tid.toc()
             sys.stdout.write("\r iter: %d/%d, ET: %.1f s, on-axis WF RMS [nm]: %.1f"%(jj, totSimulIter, 
@@ -1549,3 +1547,123 @@ class NGAO(object):
             clb.set_label('$nm$ WF', fontsize=12)
             clb.ax.tick_params(labelsize=12)
             
+        if self.coro_psf:
+            PSFcle /= (totSimulIter-totSimulInit)
+            del PSFcse
+            if self.do_wo_coro_too:
+                PSFle /= (totSimulIter-totSimulInit)
+                del PSFse
+        elif self.do_psf_le:
+            PSFle /= (totSimulIter-totSimulInit)
+            del PSFse
+                        
+        # Compute contrast and long-exposure SR
+        if self.coro_psf:
+            PSFcleprof = ndimage.mean(PSFcle.get(), labels=self.Rflabel, index=self.Rfidx)
+            inten_query = self.intensity_query(PSFcleprof, Rfvec, sep_req)
+            print("Coronagraphic PSF contrast at %.1f mas: %.2e"%(sep_req,inten_query))
+
+            if self.do_wo_coro_too:
+                PSFleprof = ndimage.mean(PSFle.get(), labels=self.Rflabel, index=self.Rfidx)
+                print("Long-exposure PSF Strehl Ratio @ %1.2f um: %1.3f"%(self.lim*1e6,self.strehl_ratio(PSFle)))
+
+        elif self.do_psf_le:
+            PSFleprof = ndimage.mean(PSFle.get(), labels=self.Rflabel, index=self.Rfidx)
+            srle = self.strehl_ratio(PSFle.get())
+            print("Long-exposure PSF Strehl Ratio @ %1.2f um: %1.3f"%(self.lim*1e6,srle))
+            
+            
+        if self.do_psf_le and self.VISU:
+            show_psf_and_profile(PSFle.get(), PSFleprof, im_display_size=1000,clim=[-5,0])
+        if self.coro_psf and self.VISU:
+            show_psf_and_profile(PSFcle.get(), PSFcleprof, im_display_size=1000)   
+        if self.coro_psf and self.VISU:
+            if self.do_wo_coro_too:
+                self.show_psf_and_profile(PSFle.get(), PSFleprof, im_display_size=1000)
+        if self.coro_psf and self.VISU:
+            if self.do_wo_coro_too:
+                self.show_two_psfs(PSFle.get(), PSFcle.get(), im_display_size=1000, log=True, clim=[-8,0])
+        ####### Compare PSFS with/without M1 aberrations
+        if self.simul_M1polish and not self.simul_turb and self.VISU:
+            self.show_two_psfs(PSFc.get(), PSFle.get(), im_display_size=1000, log=True, clim=[-9,-4])
+        # Overplot radial profiles
+        if self.coro_psf and self.VISU:
+            if self.do_wo_coro_too:
+                fig, ax2 = plt.subplots()
+                fig.set_size_inches(10,5)
+                ax2.loglog(Rfvec, PSFleprof, 'b', linewidth=3, label='w/o PC')
+                ax2.loglog(Rfvec, PSFcleprof, 'r', linewidth=3, label=' w/ PC')
+                ax2.plot(np.array([sep_req, sep_req]), np.array([1e-10,1]), 'k--', linewidth=1.5)
+                ax2.plot(np.array([1,1e4]), np.array([inten_query, inten_query]), 'k--', linewidth=1.5)
+                #ax2.plot(Rfvec, PSF1prof, 'k--', label='DL')
+                ax2.set_xlim([1,1e4])
+                ax2.set_ylim([1e-8,1e-0])
+                ax2.grid()
+                ax2.tick_params(labelsize=12)
+                ax2.set_xlabel('radial distance [mas]', fontsize=14)
+                ax2.set_ylabel('normalized intensity', fontsize=14)
+                ax2.legend(fontsize=12)
+                
+                
+        tosave = dict(D=self.D, nPx=self.nPx, PupilArea=self.PupilArea, Tsim=Tsim, totSimulTime=totSimulTime, totSimulInit=totSimulInit,
+        simul_turb=self.simul_turb, simul_M1polish=self.simul_M1polish, simul_onaxis_AO=self.simul_onaxis_AO, simul_windload=self.simul_windload,
+        eval_perf_modal=self.eval_perf_modal, eval_perf_modal_turb=self.eval_perf_modal_turb, simul_truss_mask=self.simul_truss_mask)
+
+        if self.simul_turb:
+            tosave.update(dict(seeing=self.seeing, r0=self.r0, L0=self.L0, tau0=self.tau0, wind_speed=self.wind_speed, zen_angle=self.zen_angle, atm_fname=self.atm_fullname))
+            if self.simul_variable_seeing:
+                tosave.update(dict(r0_iter=self.r0_iter))
+
+        if self.eval_perf_modal:
+            tosave.update(dict(seg_aRes_gs_iter=seg_aRes_gs_iter))
+
+        if self.eval_perf_modal_turb:
+            tosave.update(dict(seg_aTur_gs_iter=seg_aTur_gs_iter))
+
+        if self.simul_windload:
+            tosave.update(dict(wldir=wldir, wlfn=wlfn, wlstart=wlstartInit, remove_quasi_statics=remove_quasi_statics,
+                            wlstart0=wlstart0, zen=zen, az=az, wl_wind_speed = wl_wind_speed, vents=vents,
+                            wind_screen=wind_screen))
+
+        if self.simul_onaxis_AO:
+            tosave.update(dict(band=self.band, lwfs=self.gs.wavelength, mag=self.mag, e0=self.e0, nLenslet=self.nLenslet, M2_n_modes=self.M2_n_modes, IMfile=self.fnameFull,
+                pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=tot_delay, SPPctrlInit=SPPctrlInit, SPP2ndChInit=SPP2ndChInit, AOinit=AOinit))
+
+            if self.save_telemetry:
+                tosave.update(dict(a_M2_iter=a_M2_iter, da_M2_iter=da_M2_iter, wfe_gs_iter=wfe_gs_iter, spp_gs_iter=spp_gs_iter, 
+                    seg_wfe_gs_iter=seg_wfe_gs_iter,wfs_meas_iter=wfs_meas_iter, wfgrad_iter=wfgrad_iter, seg_wfgrad_iter=seg_wfgrad_iter, 
+                                   opdr_spp_iter=crazy_spp_iter))
+
+            # Pyramid WFS parameters
+            tosave.update(dict(pyr_modulation=self.pyr_modulation, pyr_angle=self.pyr_angle, pyr_thr=self.pyr_thr, 
+               percent_extra_subaps=self.percent_extra_subaps, throughput=self.throughput, pyr_fov=self.pyr_fov, RONval=self.RONval,
+               excess_noise=self.excess_noise, simul_wfs_noise=self.simul_wfs_noise))
+
+            if self.ogtl_simul:
+                tosave.update(dict(ogtl_probe_params=self.ogtl_probe_params, ogtl_detrend_deg=self.ogtl_detrend_deg, ogtl_gain=ogtl_gain, #ogtl_ogc_iter=ogtl_ogc_iter, #ogtl_ogeff_iter=ogtl_ogeff_iter,
+                                  ogtl_ogc_iter=[ogtl_ogc_outer_iter,ogtl_ogc_centr_iter],
+                                  ogtl_radord_deg=ogtl_radord_deg, ogtl_Ts=[ogtl_Ts_1,ogtl_Ts_2], probeSigInit=probeSigInit,
+                                  ogtl_reconfig_iter=ogtl_reconfig_iter, ogtl_ticks=ogtl_ticks, ogtl_ogeff_probes_iter=ogtl_ogeff_probes_iter,ogtl_ogc_probes_iter=ogtl_ogc_probes_iter))
+
+        if self.do_psf_le:
+            tosave.update(dict(srle=srle, lim=self.lim))
+            if self.save_telemetry:
+                tosave.update(dict(sr_iter=sr_iter, im_centr_iter=im_centr_iter))
+                
+                
+        filename='./savedir'+str(self.GPUnum)+'/simul_results.npz'
+        np.savez_compressed(filename, **tosave)
+        
+        #PSF stuff:
+        if self.coro_psf or self.do_psf_le:
+            tosavePSF = dict(lim=self.lim, norm_pup=self.norm_pup, fp_pixscale=self.fp_pixscale, npad=self.npad, coro_psf=self.coro_psf, centr_ref=self.centr_ref)
+            if self.coro_psf:
+                tosavePSF.update(dict(PSFcle=PSFcle.get(), do_wo_coro_too=self.do_wo_coro_too))
+                if self.do_wo_coro_too:
+                    tosavePSF.update(dict(PSFle=PSFle.get()))    
+            elif self.do_psf_le:
+                tosavePSF.update(dict(PSFle=PSFle.get()))
+
+        if self.coro_psf or self.do_psf_le:
+            filename='./savedir'+str(self.GPUnum)+'/psf_results.npz'
+            np.savez_compressed(filename, **tosavePSF)
