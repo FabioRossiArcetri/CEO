@@ -1,3 +1,9 @@
+# 1 CLT
+# 2 save simulations as TN in the raid1 folder for now subfolder perfectSensor
+# 3 load back simu results and run analisys
+# 4 comparison between simulation instances (parameter sets)
+# 5 check if a parameter set was simulated already
+
 #----- CEO: GMT ray-tracing and wavefront sensing simulator
 import ceo
 
@@ -20,6 +26,7 @@ import matplotlib.pyplot as plt
 
 # .ini file parsing
 from configparser import ConfigParser
+from datetime import datetime
 
 def zern_num(_num_):
     n = np.floor(np.sqrt(8*_num_-7)-1) // 2
@@ -37,40 +44,31 @@ def poly_nomial(x, coefs):
 class NGAO(object):
     def __init__(self, path, parametersFile):
         parser = ConfigParser()
-        parser.read(path + parametersFile + '.ini')
-        
+        parser.read(path + parametersFile + '.ini')        
         print(path + parametersFile + '.ini')
-        
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
-        
         self.dir_calib = eval(parser.get('general', 'dir_calib'))
         self.atm_dir = eval(parser.get('general', 'atm_dir'))
-
+        self.TN_dir = eval(parser.get('general', 'TN_dir'))
         self.simul_onaxis_AO = eval(parser.get('general', 'simul_onaxis_AO'))
-
         # Karhunen-Loeve per M2 segment
         self.M2_n_modes = eval(parser.get('general', 'M2_n_modes'))
-
         if self.simul_onaxis_AO:
             self.M2_modes_set = u"ASM_fittedKLs_doubleDiag"
         else:
             self.M2_modes_set = ""        
-            self.M2_n_modes = 0
-            
+            self.M2_n_modes = 0            
         self.simul_turb = eval(parser.get('general', 'simul_turb'))
         self.simul_windload = eval(parser.get('general', 'simul_windload'))
         self.simul_M1polish = eval(parser.get('general', 'simul_M1polish'))
-        self.simul_wfs_noise = eval(parser.get('general', 'simul_wfs_noise'))
-        
+        self.simul_wfs_noise = eval(parser.get('general', 'simul_wfs_noise'))        
         self.totSimulTime = eval(parser.get('general', 'totSimulTime'))
-        
         #Select M1 map
         if self.simul_M1polish:
             # self.M1_map = u'M1_print_through'     # Print-through errors.
             self.M1_map = u'M1_meeting_proposed_spec'  # M1 polishing errors.
         else:
-            self.M1_map = ''
-            
+            self.M1_map = ''            
         self.do_psf_le = eval(parser.get('general', 'do_psf_le'))
         self.coro_psf = eval(parser.get('general', 'coro_psf'))
         self.do_wo_coro_too = eval(parser.get('general', 'do_wo_coro_too')) # If True, compute both w/coro and w/o coro in the same simulation
@@ -82,15 +80,13 @@ class NGAO(object):
         self.lim = eval(parser.get('general', 'lim'))
         self.npad = eval(parser.get('general', 'npad'))
         self.sep_lD = eval(parser.get('general', 'sep_lD'))        
-
-        self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))        
+        self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))     
         self.M2_modes_scramble = eval(parser.get('general', 'M2_modes_scramble'))
-
         self.save_telemetry = eval(parser.get('general', 'save_telemetry'))        
         self.do_psf_le = eval(parser.get('general', 'do_psf_le'))        
         self.do_crazy_spp = eval(parser.get('general', 'do_crazy_spp'))        
-        self.fake_fast_spp_convergence = eval(parser.get('general', 'fake_fast_spp_convergence'))        
-        self.save_phres_decimated = eval(parser.get('general', 'save_phres_decimated'))        
+        self.fake_fast_spp_convergence = eval(parser.get('general', 'fake_fast_spp_convergence'))
+        self.save_phres_decimated = eval(parser.get('general', 'save_phres_decimated'))
         self.save_psfse_decimated = eval(parser.get('general', 'save_psfse_decimated'))        
 
         self.sep_req = self.sep_lD * self.lim/ 24.5 * ceo.constants.RAD2MAS  # in mas
@@ -298,7 +294,6 @@ class NGAO(object):
                 fig.colorbar(imm2, ax=ax2)
                 plt.show()
                 
-                
 
     def KL_modes_exit_pupil(self):
                 
@@ -308,14 +303,6 @@ class NGAO(object):
         self.gmt.reset()
         self.gs.reset()
         self.gmt.M2.modes.a[:,this_kl] = amp
-
-        """self.gmt.M2.modes.a[0,9] = 5e-9
-        self.gmt.M2.modes.a[1,105] = 5e-9
-        self.gmt.M2.modes.a[2,300] = 5e-9
-        self.gmt.M2.modes.a[3,400] = 5e-9
-        self.gmt.M2.modes.a[4,500] = 5e-9
-        self.gmt.M2.modes.a[5,674] = 5e-9"""
-
         self.gmt.M2.modes.update()
         self.gmt.propagate(self.gs)
 
@@ -361,16 +348,16 @@ class NGAO(object):
             # fname = 'IM'+'_fittedKLs500_S7OC03945'+'_PYR_thr%1.3f_mod%d_SAv%d_px%1.2fcm_sep%d.npz'%(pyr_thr,int(wfs.modulation),wfs.n_sspp,pixelSize*100,pyr_separation)
             #-----> Double diagonalization modes (ASM_fittedKLs_doubleDiag)
             fname = 'IM'+'_KLsDD675_S7OC0%d'%(self.Roc*1e4)+'_PYR_thr%1.3f_mod%d_SAv%d_px%1.2fcm_sep%d.npz'%(self.pyr_thr,int(self.wfs.modulation),self.wfs.n_sspp,self.pixelSize*100,self.pyr_separation)
-            self.fnameFull = os.path.normpath(os.path.join(RECdir,fname))
-            print(self.fnameFull)
+            self.IMfnameFull = os.path.normpath(os.path.join(RECdir,fname))
+            print(self.IMfnameFull)
             #TODOFR: Flag to generate or not the file
-            if not os.path.isfile(self.fnameFull):  
+            if not os.path.isfile(self.IMfnameFull):  
                 self.D_M2_MODES = self.gmt.NGWS_calibrate(self.wfs,self.gs, stroke=self.Zstroke)
                 tosave = dict(D_M2=D_M2_MODES, first_mode=self.z_first_mode, Stroke=self.Zstroke)
-                np.savez(self.fnameFull, **tosave)
+                np.savez(self.IMfnameFull, **tosave)
             else: 
-                print(u'Reading file: '+self.fnameFull)
-                ftemp = np.load(self.fnameFull)
+                print(u'Reading file: '+self.IMfnameFull)
+                ftemp = np.load(self.IMfnameFull)
                 self.D_M2_MODES = ftemp.f.D_M2
                 ftemp.close()
 
@@ -805,7 +792,6 @@ class NGAO(object):
                 ax2.set_ylabel('coeff amp [nm RMS]')
                 plt.show()
 
-
             this_isl = 5
             this_amp = 100e-9
             first_kl = 1 #MUST be 1
@@ -861,8 +847,7 @@ class NGAO(object):
         print("WF RMS of PTT modes:")
         print(np.array_str(np.sum(self.PTTmato**2,axis=0)/self.nmaskPup, precision=2))
 
-        self.inv_PTTmato = np.linalg.pinv(self.PTTmato)
-        
+        self.inv_PTTmato = np.linalg.pinv(self.PTTmato)        
         self.gmt.reset()
         self.gs.reset()
         self.gmt.propagate(self.gs)
@@ -881,8 +866,7 @@ class NGAO(object):
             wfgradmat[:,jj] = (self.gs.wavefront.gradientAverageFast(self.D)*ceo.constants.RAD2MAS - self.wfgrad_ref) / ttamp
 
         self.inv_wfgradmat = np.linalg.inv(wfgradmat)
-        
-        
+
 
     def phaseAveraging(self):
         if self.do_Phase_integration:
@@ -1035,8 +1019,35 @@ class NGAO(object):
         if self.VISU:
             self.show_psf_and_profile(self.PSF0.get(), self.PSF0prof, im_display_size=1000)
             print('Strehl ratio @ %.1f um of diff-limited PSF: %.2f'%(self.lim*1e6,np.max(self.PSF0)))
-            
-            
+    
+    
+    def runAll(self):
+        self.M2_KL_modes()
+        self.propagatePyramid()
+        self.KL_modes_exit_pupil()
+        self.pyr_display_signals()
+        self.getOrCalibrateIM()
+        self.extractIMRequestedModes()
+        self.applySignalMasks()
+        self.showIMSignalsPrep()
+        self.showIMSignals(6, 100)
+        self.showIMSignals(0, 0)
+        self.removeCentralPiston()
+        self.doIMsvd()
+        self.showEigenMode(202)
+        self.genelarizedIMInverse()
+        self.addRowsOfRemovedModes()
+        self.idealPistonSensor()
+        self.doOTGLsimul()
+        self.simulTurbolence()
+        self.modalPerfEval()
+        self.showSignalsModeSegAmp(6, 20, -25e-9)
+        self.islandMode(6)
+        self.globalTTModes()
+        self.phaseAveraging()
+        self.showDL_PSF()
+        self.closedLoopSimul()
+
             
     def closedLoopSimul(self):
         ### Reset objects
@@ -1120,24 +1131,24 @@ class NGAO(object):
         if not self.simul_turb:
             #--- Timing when no turbulence is simulated
             Tsim= 1e-3                         # simulation sampling time [s]
-            totSimulIter = 50                  # simulation duration [iterations]
-            totSimulTime = totSimulIter*Tsim   # simulation duration [in seconds]
-            totSimulInit = 30                  # start PSF integration at this iteration
+            self.totSimulIter = 50                  # simulation duration [iterations]
+            totSimulTime = self.totSimulIter*Tsim   # simulation duration [in seconds]
+            self.totSimulInit = 30                  # start PSF integration at this iteration
             SPPctrlInit  = float('inf')        # start controlling SPP
             SPP2ndChInit = float('inf')        # Apply 2nd channel correction (with ideal SPS)
         else:
             #--- Timing when turbulence is simulated (longer exposures)
             Tsim = 1e-3                             # simulation sampling time [s]
             totSimulTime = self.totSimulTime        # simulation duration [in seconds]
-            totSimulIter = round(totSimulTime/Tsim) # simulation duration [iterations]
+            self.totSimulIter = round(totSimulTime/Tsim) # simulation duration [iterations]
 
             AOinit = 0 #round(0.10/Tsim)               # close the AO loop
-            SPPctrlInit  = AOinit+round(0.05/Tsim)+1       # start controlling SPP
-            SPP2ndChInit = AOinit+round(0.1/Tsim)        # start applying 2nd channel correction (with ideal SPS)
-            SPP2ndCh_Ts  = round(0.150/Tsim)       # 2nd channel sampling time (in number of iterations)
-            SPP2ndCh_count = 0
+            self.SPPctrlInit  = AOinit+round(0.05/Tsim)+1       # start controlling SPP
+            self.SPP2ndChInit = AOinit+round(0.1/Tsim)        # start applying 2nd channel correction (with ideal SPS)
+            self.SPP2ndCh_Ts  = round(0.150/Tsim)       # 2nd channel sampling time (in number of iterations)
+            self.SPP2ndCh_count = 0
 
-            totSimulInit = AOinit+1000         # start PSF integration at this iteration
+            self.totSimulInit = AOinit+1000         # start PSF integration at this iteration
 
             if self.do_Phase_integration:
                 PhIntInit = AOinit+1000  # start averaging the phase maps
@@ -1148,32 +1159,32 @@ class NGAO(object):
             wlstartInit = 0      
 
         if self.ogtl_simul:
-            probeSigInit = AOinit+SPP2ndChInit #SPPctrlInit+9          # Start injection probe signals on selected modes 
+            probeSigInit = AOinit+self.SPP2ndChInit #SPPctrlInit+9          # Start injection probe signals on selected modes 
             ogtl_Ts_1 = 50e-3 # sampling during bootstrap [s]
             ogtl_sz = np.int(ogtl_Ts_1 /Tsim)
             ogtl_count = 0
             self.ogtl_detrend_deg = 3   # detrend time series
             nprobes = len(self.ogtl_probe_params)
-            ogtl_radord_deg  = nprobes-1   # fit OG vs radial order curve 
-            ogtl_gain = 0.3
+            self.ogtl_radord_deg  = nprobes-1   # fit OG vs radial order curve 
+            self.ogtl_gain = 0.3
 
             self.ogtl_timevec = np.arange(0,ogtl_sz)*Tsim
             self.cosFn = np.array([np.cos(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
             self.sinFn = np.array([np.sin(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
 
             ogtl_Ts_2 = 500e-3 #sampling after convergence [s]
-            ogtl_reconfig_iter =probeSigInit + np.int(18*ogtl_Ts_1/Tsim)  # make sure this coincides with an OGTL iteration.
+            self.ogtl_reconfig_iter =probeSigInit + np.int(18*ogtl_Ts_1/Tsim)  # make sure this coincides with an OGTL iteration.
 
-            ogtl_ogc_probes = np.ones(nprobes)
-            ogtl_ogc_allmodes = np.ones(self.n_mode)
+            self.ogtl_ogc_probes = np.ones(nprobes)
+            self.ogtl_ogc_allmodes = np.ones(self.n_mode)
             OGC_all  = cp.ones((7,self.n_mode))
-            ogtl_ogeff_probes_iter = []
+            self.ogtl_ogeff_probes_iter = []
             #ogtl_ogeff_iter = []
             #ogtl_ogc_iter = []
-            ogtl_ogc_centr_iter = []
-            ogtl_ogc_outer_iter = []
-            ogtl_ogc_probes_iter = []
-            ogtl_ticks = []
+            self.ogtl_ogc_centr_iter = []
+            self.ogtl_ogc_outer_iter = []
+            self.ogtl_ogc_probes_iter = []
+            self.ogtl_ticks = []
             ogtl_Ts = ogtl_Ts_1 # select sampling to be used first
         else:
             OGC_all  = cp.ones((7,self.n_mode))
@@ -1195,8 +1206,6 @@ class NGAO(object):
         Vinc   = cp.zeros((1,tot_delay))
         Vinc[0, 0]   = 1 
         
-        
-        
         comm_buffer = cp.zeros((self.ntotmodes,tot_delay))
         myAOest1    = cp.zeros((self.ntotmodes,1))
 
@@ -1204,32 +1213,32 @@ class NGAO(object):
 
         #---- Time histories to save in results
         if self.save_telemetry or self.ogtl_simul:
-            a_M2_iter   = np.zeros((7,self.n_mode,totSimulIter))   # integrated M2 modal commands
-            da_M2_iter  = np.zeros((7,self.n_mode,totSimulIter))   # delta M2 modal commands
+            self.a_M2_iter   = np.zeros((7,self.n_mode,self.totSimulIter))   # integrated M2 modal commands
+            self.da_M2_iter  = np.zeros((7,self.n_mode,self.totSimulIter))   # delta M2 modal commands
         if self.save_telemetry:
-            a_OLCL_iter = np.zeros((7,self.n_mode,totSimulIter))
-            wfs_meas_iter = np.zeros((self.wfs.get_measurement_size(),totSimulIter)) # pyramid WFS signals
-            wfe_gs_iter = np.zeros(totSimulIter)              # on-axis WFE
-            spp_gs_iter = np.zeros((7,totSimulIter))          # on-axis (differential) segment phase piston error
-            seg_wfe_gs_iter = np.zeros((7,totSimulIter))      # on-axis WFE over each segment
-            wfgrad_iter = np.zeros((2,totSimulIter))          # on-axis WF gradient (estimate of image motion) in mas
-            seg_wfgrad_iter = np.zeros((14,totSimulIter))     # on-axis segment WF gradients [alpha_x, alpha_y]
+            a_OLCL_iter = np.zeros((7,self.n_mode,self.totSimulIter))
+            wfs_meas_iter = np.zeros((self.wfs.get_measurement_size(),self.totSimulIter)) # pyramid WFS signals
+            self.wfe_gs_iter = np.zeros(self.totSimulIter)              # on-axis WFE
+            self.spp_gs_iter = np.zeros((7,self.totSimulIter))          # on-axis (differential) segment phase piston error
+            self.seg_wfe_gs_iter = np.zeros((7,self.totSimulIter))      # on-axis WFE over each segment
+            wfgrad_iter = np.zeros((2,self.totSimulIter))          # on-axis WF gradient (estimate of image motion) in mas
+            seg_wfgrad_iter = np.zeros((14,self.totSimulIter))     # on-axis segment WF gradients [alpha_x, alpha_y]
         if self.save_telemetry and self.do_psf_le:
-            sr_iter = np.zeros(totSimulIter)
-            im_centr_iter = np.zeros((2,totSimulIter))
+            sr_iter = np.zeros(self.totSimulIter)
+            im_centr_iter = np.zeros((2,self.totSimulIter))
         if self.save_telemetry and self.simul_variable_seeing:
-            self.r0_iter = np.zeros(totSimulIter)
+            self.r0_iter = np.zeros(self.totSimulIter)
 
         if self.do_crazy_spp:
-            crazy_spp_iter = np.zeros((7,totSimulIter))
+            self.crazy_spp_iter = np.zeros((7,self.totSimulIter))
 
         if self.eval_perf_modal:
-            seg_aRes_gs_iter = np.zeros((7,self.gmt.M2.modes.n_mode,totSimulIter)) # seg KL modal coefficients buffer     
-            #ZresIter = np.zeros((nzern,totSimulIter))
+            seg_aRes_gs_iter = np.zeros((7,self.gmt.M2.modes.n_mode,self.totSimulIter)) # seg KL modal coefficients buffer     
+            #ZresIter = np.zeros((nzern,self.totSimulIter))
 
         if self.eval_perf_modal_turb:
-            seg_aTur_gs_iter = np.zeros((7,self.gmt.M2.modes.n_mode,totSimulIter)) # seg KL modal coefficients buffer 
-            #ZturIter = np.zeros((nzern,totSimulIter))
+            seg_aTur_gs_iter = np.zeros((7,self.gmt.M2.modes.n_mode,self.totSimulIter)) # seg KL modal coefficients buffer 
+            #ZturIter = np.zeros((nzern,self.totSimulIter))
 
         if self.simul_windload:
             pistjumps_com=np.zeros(7)
@@ -1238,8 +1247,8 @@ class NGAO(object):
             PhInt_iter = []   #integrated phase maps
             PhInst_iter = []  #instantaneous phase realization
             
-        Isliter = np.zeros((self.nisl,totSimulIter))
-        Islwfe = np.zeros(totSimulIter)
+        Isliter = np.zeros((self.nisl,self.totSimulIter))
+        Islwfe = np.zeros(self.totSimulIter)
         
         if self.save_phres_decimated:
             save_ph_Ts = 10e-3
@@ -1257,7 +1266,7 @@ class NGAO(object):
             psf_range_pix = np.rint(psf_range_mas/self.fp_pixscale + self.nPx*self.npad/2).astype(int)
             
             
-        for jj in range(totSimulIter):
+        for jj in range(self.totSimulIter):
             self.tid.tic()
             self.gs.reset()
 
@@ -1297,7 +1306,7 @@ class NGAO(object):
 
             nall = (self.D_M2_MODES.shape)[1]  ## number of modes calibrated
             self.M2modes_command = cp.asnumpy(comm_buffer[0:nall,delay].reshape((7,-1)))
-            if self.spp_rec_type=='MMSE' and jj <= SPPctrlInit:
+            if self.spp_rec_type=='MMSE' and jj <= self.SPPctrlInit:
                 self.M2modes_command[:,0] += cp.asnumpy(pist_buffer[:,delay])
 
             #-> Apply probe signal command
@@ -1309,7 +1318,7 @@ class NGAO(object):
 
             self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode] = self.M2modes_scramble - self.M2modes_command
             if self.save_telemetry or self.ogtl_simul:
-                a_M2_iter[:,:,jj] = self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode]
+                self.a_M2_iter[:,:,jj] = self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode]
             self.gmt.M2.modes.update()
 
             #----- On-axis WFS measurement ---------------------------------------------------
@@ -1373,20 +1382,20 @@ class NGAO(object):
                     myAOest1[:,0] = OGC_all.ravel() * (self.R_AO @ cp.asarray(AOmeasvec))
 
 
-                if jj < SPPctrlInit:   # Do not control segment piston
+                if jj < self.SPPctrlInit:   # Do not control segment piston
                     myAOest1[self.n_mode*np.arange(7),0] = 0
-                elif jj == SPPctrlInit:
+                elif jj == self.SPPctrlInit:
                     #g_pist=0.0
                     comm_buffer[self.n_mode*np.arange(7),:] = pist_buffer
 
                 if self.save_telemetry or self.ogtl_simul:
-                    da_M2_iter[:,:,jj]  = cp.asnumpy(myAOest1.ravel()).reshape((7,self.n_mode))
+                    self.da_M2_iter[:,:,jj]  = cp.asnumpy(myAOest1.ravel()).reshape((7,self.n_mode))
                 if self.save_telemetry:
-                    a_OLCL_iter[:,:,jj] = self.M2modes_command + da_M2_iter[:,:,jj] 
+                    a_OLCL_iter[:,:,jj] = self.M2modes_command + self.da_M2_iter[:,:,jj] 
 
                 myAOest1 *= gAO
 
-                if jj == SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
+                if jj == self.SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
                     if self.fake_fast_spp_convergence:
                         self.onps.reset()
                         self.onps.analyze(self.gs)
@@ -1399,8 +1408,8 @@ class NGAO(object):
                         #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
                         #    gmt.M2.motion_CS.update()
                         self.onps.reset()
-                elif jj > SPP2ndChInit:
-                    if SPP2ndCh_count == SPP2ndCh_Ts-1:
+                elif jj > self.SPP2ndChInit:
+                    if self.SPP2ndCh_count == self.SPP2ndCh_Ts-1:
                         self.onps.analyze(self.gs)
                         pistjumps_est = self.onps.get_measurement()
                         pistjumps_est -= pistjumps_est[6]
@@ -1412,11 +1421,11 @@ class NGAO(object):
                         #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
                         #    gmt.M2.motion_CS.update()
                         comm_buffer[self.KL0_idx,:] += cp.asarray(pistjumps_com[0:6,np.newaxis])
-                        SPP2ndCh_count=0
+                        self.SPP2ndCh_count=0
                         self.onps.reset()                
                     else:
                         self.onps.propagate(self.gs)
-                        SPP2ndCh_count+=1
+                        self.SPP2ndCh_count+=1
 
                 comm_buffer =  cp.dot(comm_buffer, Mdecal) + cp.dot(myAOest1,Vinc)  # handle time delay
 
@@ -1428,33 +1437,33 @@ class NGAO(object):
             if self.ogtl_simul:
                 if ogtl_count == ogtl_sz-1:
                     #---- Find effective optical gain in closed-loop operation
-                    probes_in  = [ a_M2_iter[ss,mm,jj-ogtl_sz:jj] for (ss,mm) in zip(self.seg_list,self.mode_list)]
-                    probes_out = [da_M2_iter[ss,mm,jj-ogtl_sz:jj] for (ss,mm) in zip(self.seg_list,self.mode_list)]
+                    probes_in  = [ self.a_M2_iter[ss,mm,jj-ogtl_sz:jj] for (ss,mm) in zip(self.seg_list,self.mode_list)]
+                    probes_out = [self.da_M2_iter[ss,mm,jj-ogtl_sz:jj] for (ss,mm) in zip(self.seg_list,self.mode_list)]
                     OGeff = self.optical_gain_cl(probes_in,probes_out)
-                    ogtl_ogeff_probes_iter.append(OGeff.copy())
+                    self.ogtl_ogeff_probes_iter.append(OGeff.copy())
 
                     #---- Compute optical gain compensation (OGC) coefficients for probes
-                    ogtl_ogc_probes += ogtl_gain * (1-OGeff)
-                    ogtl_ogc_probes_iter.append(ogtl_ogc_probes.copy())
+                    self.ogtl_ogc_probes += self.ogtl_gain * (1-OGeff)
+                    self.ogtl_ogc_probes_iter.append(self.ogtl_ogc_probes.copy())
 
                     #---- Fit cubic spline to radial order vs OGC
-                    ogc_spline = CubicSpline(self.probe_radord, ogtl_ogc_probes, bc_type='natural', extrapolate=True)
-                    ogtl_ogc_allmodes_outer = ogc_spline(self.radord_all_outer)
-                    ogtl_ogc_outer_iter.append(ogtl_ogc_allmodes_outer.copy())
-                    ogtl_ogc_allmodes_centr = ogc_spline(self.radord_all_centr)
-                    ogtl_ogc_centr_iter.append(ogtl_ogc_allmodes_centr.copy())
+                    ogc_spline = CubicSpline(self.probe_radord, self.ogtl_ogc_probes, bc_type='natural', extrapolate=True)
+                    self.ogtl_ogc_allmodes_outer = ogc_spline(self.radord_all_outer)
+                    self.ogtl_ogc_outer_iter.append(self.ogtl_ogc_allmodes_outer.copy())
+                    self.ogtl_ogc_allmodes_centr = ogc_spline(self.radord_all_centr)
+                    self.ogtl_ogc_centr_iter.append(self.ogtl_ogc_allmodes_centr.copy())
 
                     #---- Update K_OGC matrix
                     for this_seg in range(6):
-                        OGC_all[this_seg,:] = cp.asarray(ogtl_ogc_allmodes_outer)
-                    OGC_all[6,:] = cp.asarray(ogtl_ogc_allmodes_centr)
+                        OGC_all[this_seg,:] = cp.asarray(self.ogtl_ogc_allmodes_outer)
+                    OGC_all[6,:] = cp.asarray(self.ogtl_ogc_allmodes_centr)
 
                     #---- Time stamp of OGTL correction
-                    ogtl_ticks.append(jj*Tsim)
+                    self.ogtl_ticks.append(jj*Tsim)
                     ogtl_count = 0
 
                 #---- Increase OGTL sampling frequency after intial convergence, for more stability
-                if jj == ogtl_reconfig_iter:
+                if jj == self.ogtl_reconfig_iter:
                     ogtl_Ts = ogtl_Ts_2 # in seconds
                     ogtl_sz = np.int(ogtl_Ts /Tsim)
                     self.ogtl_detrend_deg = 5
@@ -1464,11 +1473,11 @@ class NGAO(object):
 
             #----- Save telemetry data ------------------------------------------
             if self.save_telemetry:
-                wfe_gs_iter[jj] = self.gs.wavefront.rms()
-                spp_gs_iter[:,jj] = self.gs.piston(where='segments')
+                self.wfe_gs_iter[jj] = self.gs.wavefront.rms()
+                self.spp_gs_iter[:,jj] = self.gs.piston(where='segments')
                 #this_spp = gs.piston(where='segments')
                 #spp_gs_iter[:,jj] = this_spp[0,0:6] - this_spp[0,6]
-                seg_wfe_gs_iter[:,jj] = self.gs.phaseRms(where='segments')
+                self.seg_wfe_gs_iter[:,jj] = self.gs.phaseRms(where='segments')
                 wfgrad_iter[:,jj] = self.gs.wavefront.gradientAverageFast(self.D)*ceo.constants.RAD2MAS - self.wfgrad_ref
                 seg_wfgrad_iter[:,jj] = np.squeeze(self.gs.segmentsWavefrontGradient()*ceo.constants.RAD2MAS  - self.seg_wfgrad_ref)
 
@@ -1482,7 +1491,7 @@ class NGAO(object):
                 OPDztt = np.zeros(self.nPx**2)
                 OPDztt[self.GMTmask] = self.PTTmato[:,1:] @ zTTc
                 OPDr = OPD - OPDztt
-                crazy_spp_iter[:,jj] = np.array([np.sum(OPDr[self.P[segId,:]])/self.npseg[segId] for segId in range(7)])
+                self.crazy_spp_iter[:,jj] = np.array([np.sum(OPDr[self.P[segId,:]])/self.npseg[segId] for segId in range(7)])
 
 
             #----- Compute short-exposure PSFs --------------------------------
@@ -1493,12 +1502,12 @@ class NGAO(object):
                 else:
                     PSFse, PSFcse = perfect_coro_psf_se(shifted=True, norm_factor=norm_pup, do_wo_coro_too=True)
 
-                if jj == totSimulInit:
+                if jj == self.totSimulInit:
                     print('\nStart accumulating coro PSFs\n')
                     PSFcle = PSFcse.copy()
                     if do_wo_coro_too:
                         PSFle = PSFse.copy()
-                elif jj > totSimulInit:
+                elif jj > self.totSimulInit:
                     PSFcle += PSFcse
                     if do_wo_coro_too:
                         PSFle += PSFse
@@ -1506,10 +1515,10 @@ class NGAO(object):
             elif self.do_psf_le:
                 PSFse  = psf_se(complex_amplitude(FT=True), shifted=True, norm_factor=norm_pup)
 
-                if jj == totSimulInit:
+                if jj == self.totSimulInit:
                     print('\nStart accumulating PSFs\n')
                     PSFle = PSFse.copy()
-                elif jj > totSimulInit:
+                elif jj > self.totSimulInit:
                     PSFle += PSFse
 
             if self.save_psfse_decimated:
@@ -1529,7 +1538,7 @@ class NGAO(object):
                 im_centr_iter[:,jj] = centrse #self.psf_centroid(PSFse.get())
 
             self.tid.toc()
-            sys.stdout.write("\r iter: %d/%d, ET: %.1f s, on-axis WF RMS [nm]: %.1f"%(jj, totSimulIter, 
+            sys.stdout.write("\r iter: %d/%d, ET: %.1f s, on-axis WF RMS [nm]: %.1f"%(jj, self.totSimulIter, 
                                                                                       self.tid.elapsedTime*1e-3, self.gs.phaseRms()*1e9))
             sys.stdout.flush() 
 
@@ -1548,13 +1557,13 @@ class NGAO(object):
             clb.ax.tick_params(labelsize=12)
             
         if self.coro_psf:
-            PSFcle /= (totSimulIter-totSimulInit)
+            PSFcle /= (self.totSimulIter-self.totSimulInit)
             del PSFcse
             if self.do_wo_coro_too:
-                PSFle /= (totSimulIter-totSimulInit)
+                PSFle /= (self.totSimulIter-self.totSimulInit)
                 del PSFse
         elif self.do_psf_le:
-            PSFle /= (totSimulIter-totSimulInit)
+            PSFle /= (self.totSimulIter-self.totSimulInit)
             del PSFse
                         
         # Compute contrast and long-exposure SR
@@ -1605,12 +1614,12 @@ class NGAO(object):
                 ax2.legend(fontsize=12)
                 
                 
-        tosave = dict(D=self.D, nPx=self.nPx, PupilArea=self.PupilArea, Tsim=Tsim, totSimulTime=totSimulTime, totSimulInit=totSimulInit,
+        tosave = dict(D=self.D, nPx=self.nPx, PupilArea=self.PupilArea, Tsim=Tsim, totSimulTime=totSimulTime, totSimulInit=self.totSimulInit,
         simul_turb=self.simul_turb, simul_M1polish=self.simul_M1polish, simul_onaxis_AO=self.simul_onaxis_AO, simul_windload=self.simul_windload,
         eval_perf_modal=self.eval_perf_modal, eval_perf_modal_turb=self.eval_perf_modal_turb, simul_truss_mask=self.simul_truss_mask)
 
         if self.simul_turb:
-            tosave.update(dict(seeing=self.seeing, r0=self.r0, L0=self.L0, tau0=self.tau0, wind_speed=self.wind_speed, zen_angle=self.zen_angle, atm_fname=self.atm_fullname))
+            tosave.update(dict(totSimulIter=self.totSimulIter, seeing=self.seeing, r0=self.r0, L0=self.L0, tau0=self.tau0, wind_speed=self.wind_speed, zen_angle=self.zen_angle, atm_fname=self.atm_fullname))
             if self.simul_variable_seeing:
                 tosave.update(dict(r0_iter=self.r0_iter))
 
@@ -1626,13 +1635,13 @@ class NGAO(object):
                             wind_screen=wind_screen))
 
         if self.simul_onaxis_AO:
-            tosave.update(dict(band=self.band, lwfs=self.gs.wavelength, mag=self.mag, e0=self.e0, nLenslet=self.nLenslet, M2_n_modes=self.M2_n_modes, IMfile=self.fnameFull,
-                pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=tot_delay, SPPctrlInit=SPPctrlInit, SPP2ndChInit=SPP2ndChInit, AOinit=AOinit))
+            tosave.update(dict(band=self.band, lwfs=self.gs.wavelength, mag=self.mag, e0=self.e0, nLenslet=self.nLenslet, M2_n_modes=self.M2_n_modes, IMfile=self.IMfnameFull,
+                pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=tot_delay, SPPctrlInit=self.SPPctrlInit, SPP2ndChInit=self.SPP2ndChInit, SPP2ndCh_Ts=self.SPP2ndCh_Ts, AOinit=AOinit))
 
             if self.save_telemetry:
-                tosave.update(dict(a_M2_iter=a_M2_iter, da_M2_iter=da_M2_iter, wfe_gs_iter=wfe_gs_iter, spp_gs_iter=spp_gs_iter, 
-                    seg_wfe_gs_iter=seg_wfe_gs_iter,wfs_meas_iter=wfs_meas_iter, wfgrad_iter=wfgrad_iter, seg_wfgrad_iter=seg_wfgrad_iter, 
-                                   opdr_spp_iter=crazy_spp_iter))
+                tosave.update(dict(a_M2_iter=self.a_M2_iter, da_M2_iter=self.da_M2_iter, wfe_gs_iter=self.wfe_gs_iter, spp_gs_iter=self.spp_gs_iter, 
+                    seg_wfe_gs_iter=self.seg_wfe_gs_iter,wfs_meas_iter=wfs_meas_iter, wfgrad_iter=wfgrad_iter, seg_wfgrad_iter=seg_wfgrad_iter, 
+                                   opdr_spp_iter=self.crazy_spp_iter))
 
             # Pyramid WFS parameters
             tosave.update(dict(pyr_modulation=self.pyr_modulation, pyr_angle=self.pyr_angle, pyr_thr=self.pyr_thr, 
@@ -1640,16 +1649,16 @@ class NGAO(object):
                excess_noise=self.excess_noise, simul_wfs_noise=self.simul_wfs_noise))
 
             if self.ogtl_simul:
-                tosave.update(dict(ogtl_probe_params=self.ogtl_probe_params, ogtl_detrend_deg=self.ogtl_detrend_deg, ogtl_gain=ogtl_gain, #ogtl_ogc_iter=ogtl_ogc_iter, #ogtl_ogeff_iter=ogtl_ogeff_iter,
-                                  ogtl_ogc_iter=[ogtl_ogc_outer_iter,ogtl_ogc_centr_iter],
-                                  ogtl_radord_deg=ogtl_radord_deg, ogtl_Ts=[ogtl_Ts_1,ogtl_Ts_2], probeSigInit=probeSigInit,
-                                  ogtl_reconfig_iter=ogtl_reconfig_iter, ogtl_ticks=ogtl_ticks, ogtl_ogeff_probes_iter=ogtl_ogeff_probes_iter,ogtl_ogc_probes_iter=ogtl_ogc_probes_iter))
+                tosave.update(dict(ogtl_probe_params=self.ogtl_probe_params, ogtl_detrend_deg=self.ogtl_detrend_deg, ogtl_gain=self.ogtl_gain, #ogtl_ogc_iter=ogtl_ogc_iter, #ogtl_ogeff_iter=ogtl_ogeff_iter,
+                                  ogtl_ogc_outer_iter=self.ogtl_ogc_outer_iter,
+                                  ogtl_ogc_centr_iter=self.ogtl_ogc_centr_iter,
+                                  ogtl_radord_deg=self.ogtl_radord_deg, ogtl_Ts=[ogtl_Ts_1,ogtl_Ts_2], probeSigInit=probeSigInit,
+                                  ogtl_reconfig_iter=self.ogtl_reconfig_iter, ogtl_ticks=self.ogtl_ticks, ogtl_ogeff_probes_iter=self.ogtl_ogeff_probes_iter,ogtl_ogc_probes_iter=self.ogtl_ogc_probes_iter))
 
         if self.do_psf_le:
             tosave.update(dict(srle=srle, lim=self.lim))
             if self.save_telemetry:
                 tosave.update(dict(sr_iter=sr_iter, im_centr_iter=im_centr_iter))
-                
                 
         filename='./savedir'+str(self.GPUnum)+'/simul_results.npz'
         np.savez_compressed(filename, **tosave)
@@ -1667,3 +1676,316 @@ class NGAO(object):
         if self.coro_psf or self.do_psf_le:
             filename='./savedir'+str(self.GPUnum)+'/psf_results.npz'
             np.savez_compressed(filename, **tosavePSF)
+                      
+    
+    # just copy the files in ./savedir to a newly generated TN
+    def saveTN(self):
+        tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
+        tnpath = os.path.join(self.TN_dir, tnString)
+        os.makedirs(tnpath,exist_ok=True)
+        os.system('cp ./savedir' + str(self.GPUnum)+ '/* ' + tnpath )  
+
+        
+    def loadTN(self, tnString):
+        tnpath1 = os.path.join(self.TN_dir, tnString, 'simul_results.npz')
+        with np.load(tnpath1, allow_pickle=True) as data:
+            self.D = data['D']
+            self.nPx = data['nPx']
+            self.PupilArea = data['PupilArea']
+            self.Tsim = data['Tsim']
+            self.totSimulTime = data['totSimulTime']
+            self.totSimulInit = data['totSimulInit']
+            self.simul_turb = data['simul_turb']
+            self.simul_M1polish = data['simul_M1polish']
+            self.simul_onaxis_AO = data['simul_onaxis_AO']
+            self.simul_windload = data['simul_windload']
+            self.eval_perf_modal = data['eval_perf_modal']
+            self.eval_perf_modal_turb = data['eval_perf_modal_turb']
+            self.simul_truss_mask = data['simul_truss_mask']            
+            self.totSimulIter = data['totSimulIter']
+            self.seeing = data['seeing']
+            self.r0 = data['r0']
+            self.L0 = data['L0']
+            self.tau0 = data['tau0']
+            self.wind_speed = data['wind_speed']
+            self.zen_angle = data['zen_angle']
+            if 'atm_fullname' in data:
+                self.atm_fullname = data['atm_fullname']
+            if 'r0_iter' in data:
+                self.r0_iter = data['r0_iter']
+            if 'seg_aRes_gs_iter' in data:
+                self.seg_aRes_gs_iter = data['seg_aRes_gs_iter']
+            if 'seg_aTur_gs_iter' in data:
+                self.seg_aTur_gs_iter = data['seg_aTur_gs_iter']
+            if 'wldir' in data:
+                self.wldir = data['wldir']
+                self.wlfn = data['wlfn']
+                self.wlstartInit = data['wlstartInit']
+                self.remove_quasi_statics = data['remove_quasi_statics']
+                self.wlstart0 = data['wlstart0']
+                self.zen = data['zen']
+                self.az = data['az']
+                self.wl_wind_speed = data['wl_wind_speed']
+                self.vents = data['vents']
+                self.wind_screen = data['wind_screen']
+            
+            self.band = data['band']
+            # cannot rewrite this
+#            self.gs.wavelength = data['lwfs']
+            self.mag = data['mag']
+            self.e0 = data['e0']
+            self.nLenslet = data['nLenslet']
+            self.M2_n_modes = data['M2_n_modes']
+            self.IMfnameFull = data['IMfile']
+            self.pixelSize = data['pixelSize']
+            self.gAO = cp.array( data['gAO'] )
+            self.tot_delay = data['tot_delay']
+            
+            self.SPP2ndCh_Ts = data['SPP2ndCh_Ts']
+            self.SPPctrlInit = data['SPPctrlInit']
+            self.SPP2ndChInit = data['SPP2ndChInit']
+                        
+            self.AOinit = data['AOinit']
+            self.a_M2_iter = data['a_M2_iter']
+            self.da_M2_iter = data['da_M2_iter']
+            self.wfe_gs_iter = data['wfe_gs_iter']
+            self.spp_gs_iter = data['spp_gs_iter']
+            self.seg_wfe_gs_iter = data['seg_wfe_gs_iter']
+            self.wfs_meas_iter = data['wfs_meas_iter']
+            self.wfgrad_iter = data['wfgrad_iter']
+            self.seg_wfgrad_iter = data['seg_wfgrad_iter']
+
+            if 'opdr_spp_iter' in data:
+                self.crazy_spp_iter = data['opdr_spp_iter']
+            self.pyr_modulation = data['pyr_modulation']
+            self.pyr_angle = data['pyr_angle']
+            self.pyr_thr = data['pyr_thr']
+            self.percent_extra_subaps = data['percent_extra_subaps']
+            self.throughput = data['throughput']
+            self.pyr_fov = data['pyr_fov']
+            self.RONval = data['RONval']
+            self.excess_noise = data['excess_noise']
+            self.simul_wfs_noise = data['simul_wfs_noise']
+            self.ogtl_probe_params = data['ogtl_probe_params']
+            self.ogtl_detrend_deg = data['ogtl_detrend_deg']
+            self.ogtl_ogc_outer_iter = data['ogtl_ogc_outer_iter']
+            self.ogtl_ogc_centr_iter = data['ogtl_ogc_centr_iter']
+            self.ogtl_radord_deg = data['ogtl_radord_deg']
+            self.ogtl_Ts = data['ogtl_Ts']
+            self.probeSigInit = data['probeSigInit']
+            self.ogtl_reconfig_iter = data['ogtl_reconfig_iter']
+            self.ogtl_ticks = data['ogtl_ticks']
+            self.ogtl_ogeff_probes_iter = data['ogtl_ogeff_probes_iter']
+            self.ogtl_ogc_probes_iter = data['ogtl_ogc_probes_iter']
+
+            if 'srle' in data:
+                self.srle = data['srle']
+                self.lim = data['lim']
+            if 'sr_iter' in data:
+                self.sr_iter = data['sr_iter']
+                self.im_centr_iter = data['im_centr_iter']
+
+        tnpath2 = os.path.join(self.TN_dir, tnString, 'psf_results.npz')
+        with np.load(tnpath1) as data:
+            if 'lim' in data:
+                self.lim = data['lim']
+                self.norm_pup = data['norm_pup']
+                self.fp_pixscale = data['fp_pixscale']
+                self.npad = data['npad']
+                self.coro_psf = data['coro_psf']
+                self.centr_ref = data['centr_ref']
+                self.PSFcle = cp.array(data['PSFcle'])
+                self.do_wo_coro_too = data['do_wo_coro_too']
+                self.PSFle = cp.array(data['PSFle'])
+
+    
+    def analyseSimulation(self):
+
+        
+        self.totSimulInit =500
+        
+        self.propagatePyramid()
+        self.M2_KL_modes()
+        self.getOrCalibrateIM()
+#        self.doOTGLsimul()
+        
+        nall = (self.D_M2_MODES.shape)[1]  ## number of modes calibrated
+        self.n_mode = nall//7
+
+        # init        
+        niter = self.totSimulIter-self.totSimulInit
+        timeVec = np.arange(self.totSimulIter)*self.Tsim
+                        
+        if self.simul_onaxis_AO:
+            #-- Ticks will be set at multiples of WFS central wavelength
+            lwfs = np.round(self.gs.wavelength*1e9)
+
+        if self.SPP2ndCh_Ts < niter:   
+            self.SPP2ndCh_sampling_time = self.Tsim*self.SPP2ndCh_Ts
+            #-- Ticks will be set at multiples of AGWS sampling Time
+            xticksrange = np.round(np.array([0,timeVec[-1]]) / self.SPP2ndCh_sampling_time)
+            self.SPP2ndCH_ticks = np.arange(xticksrange[0],xticksrange[1]+1)*self.SPP2ndCh_sampling_time
+
+
+        # WFE and SPP RMS  
+        fig, (ax1,ax2) = plt.subplots(ncols=2)
+        fig.set_size_inches(15,5)
+
+        #### on-axis WFE vs. iteration number
+        ax1.plot(self.wfe_gs_iter*1e9)
+        ax1.grid()
+        ax1.set_xlabel('Iteration number', fontsize=20)
+        ax1.set_ylabel('WF RMS [nm]', fontsize=20)
+        ax1.tick_params(labelsize=15)
+
+        #### on-axis segment phase piston (SPP) RMS vs. iteration number
+        ax2.plot(np.std(self.spp_gs_iter,0)*1e9, label='OPD')
+        ax2.plot(np.std(self.crazy_spp_iter,0)*1e9, label='OPDr')
+        ax2.legend()
+        ax2.grid()
+        ax2.set_xlabel('Iteration number', fontsize=20)
+        ax2.set_ylabel('SPP [nm WF]', fontsize=20)
+        ax2.tick_params(labelsize=15)
+        #ax2.set_xlim([40,60])
+
+        plt.show()
+
+        wfe_final = np.mean(self.wfe_gs_iter[self.totSimulInit:])
+        spp_final  = np.mean((np.std(self.spp_gs_iter,   0))[self.totSimulInit:])
+        spp_final2 = np.mean((np.std(self.crazy_spp_iter,0))[self.totSimulInit:])
+        SR_marechal_final = np.exp(-(wfe_final*2*np.pi/self.lim)**2)
+
+        print ('      Final WFE [nm RMS]: %3.1f'%(wfe_final*1e9))
+        #print ('      Final SPP RMS [nm]: %3.1f'%(spp_final*1e9))
+        print ('      Final SPP RMS [nm]: %3.1f'%(spp_final2*1e9))
+        print ('Equivalent SR @ %2.2f um: %1.4f'%(self.lim*1e6,SR_marechal_final))
+
+
+        # WFE and SPP
+        #-- Differential segment piston w.r.t. central segment
+        diff_spp_iter =self.spp_gs_iter - self.spp_gs_iter[6,:]
+        diff_spp_iter2 =self.crazy_spp_iter - self.crazy_spp_iter[6,:]
+        #### on-axis segment WFE vs. iteration number
+        fig, (ax1,ax2) = plt.subplots(ncols=2)
+        fig.set_size_inches(15,5)
+        ax1.plot(timeVec,self.seg_wfe_gs_iter.T*1e9)#, '-+')
+        ax1.grid()
+        ax1.set_xlabel('elapsed time [s]', fontsize=15)
+        ax1.set_ylabel('WF RMS [nm]', fontsize=15)
+        ax1.tick_params(labelsize=13)
+        #ax1.set_ylim([0,2000])
+        #ax1.set_xlim([0,20])
+        #### on-axis SPP vs. iteration number
+        ax2.plot(timeVec,diff_spp_iter2.T*1e9)#, '-+')
+        ax2.grid()
+        ax2.set_xlabel('elapsed time [s]', fontsize=15)
+        ax2.set_ylabel('SPP [nm WF]', fontsize=15)
+        ax2.tick_params(labelsize=13)
+        #ax2.set_ylim([-4000,4000])
+        #ax2.set_xlim([0,20])
+
+        lwfs = np.round(self.gs.wavelength*1e9)
+        yticksrange = np.round((np.min(diff_spp_iter*1e9), np.max(diff_spp_iter*1e9)) / lwfs)
+        lwfs_ticks = np.arange(yticksrange[0]-1,yticksrange[1]+1)*lwfs
+        ax2.set_yticks(lwfs_ticks) # yTicks will be set at multiples of the WFS central wavelength"""
+        #ax2.set_xticks(SPP2ndCH_ticks)
+        #ax2.set_xlim([0,2])
+        #ax1.set_xlim([0,2])
+
+        plt.show()
+        
+        
+        self.n_mode = 500
+        
+        daM2mv  = np.zeros((self.n_mode,7))
+        daM2var = np.zeros((self.n_mode,7))
+        for segId in range(7):
+            daM2mv[:,segId] = np.mean(self.da_M2_iter[segId,:,self.totSimulInit:], axis=1)
+            daM2var[:,segId] = np.var(self.da_M2_iter[segId,:,self.totSimulInit:], axis=1)
+        aM2mv  = np.zeros((self.n_mode,7))
+        aM2var = np.zeros((self.n_mode,7))
+        for segId in range(7):
+            aM2mv[:,segId] = np.mean(self.a_M2_iter[segId,:,self.totSimulInit:], axis=1)
+            aM2var[:,segId] = np.var(self.a_M2_iter[segId,:,self.totSimulInit:], axis=1)
+        
+        # M2 commands modal plot
+        f1, ax = plt.subplots(ncols=3, nrows=3)
+        f1.set_size_inches(20,15)
+        for jj in range(7):
+            thisax = (ax.ravel())[jj]
+            thisax.loglog(np.arange(self.n_mode)+1,aM2var[:,jj]*(1e9**2))
+            thisax.loglog(np.arange(self.n_mode)+1,daM2var[:,jj]*(1e9**2))
+            thisax.grid()
+            thisax.set_title('Segment #%d'%(jj+1), size='large')
+            thisax.set_xlabel('mode number + 1')
+            thisax.set_ylabel('variance [nm$^2$ WF]', size='large')
+            #thisax.set_ylim([-30,100])
+        for k in range(7,9):
+            (ax.ravel())[k].axis('off')
+
+        plt.show()
+
+        # Optical Gain
+        fig, (ax,ax2) = plt.subplots(ncols=2)
+        fig.set_size_inches(12,4)
+        ax.plot(self.ogtl_ticks, np.array(self.ogtl_ogeff_probes_iter), drawstyle='steps-post')
+        label = ['KL#%d'%kk['mode'] for kk in self.ogtl_probe_params]
+        #ax.set_xticks(OGTL_ticks[1:-1:4])
+        ax.legend(label)
+        ax.grid()
+        ax.set_xlabel('elapsed time [s]', size='large')
+        ax.set_ylabel('effective OG', size='large')
+        #ax.set_xlim([0,2.05])
+
+        caca = ax2.plot(self.ogtl_ticks, 1-np.array(self.ogtl_ogeff_probes_iter), drawstyle='steps-post')
+        ax2.grid()
+        ax2.set_xlabel('elapsed time [s]', size='large')
+        ax2.set_ylabel('1 - effective OG', size='large')
+        
+        plt.show()
+
+        fig, ((ax,ax2),(ax3,ax4)) = plt.subplots(ncols=2, nrows=2)
+        fig.set_size_inches(14,11)
+        ax.plot(self.ogtl_ticks, self.ogtl_ogc_outer_iter, drawstyle='steps-post')
+        #ax.set_xticks(OGTL_ticks[1:-1:4])
+        ax.grid()
+        ax.set_xlabel('elapsed time [s]', size='large')
+        ax.set_ylabel('OGC coefficient', size='large')
+        ax.set_title('outer segments', fontsize=13)
+        #ax.set_xlim([0,2.05])
+
+        this_iter = 15
+
+        radord_data = dict(np.load(self.dir_calib+'ASM_fittedKLs_S7OC04184_675kls_radord.npz'))
+        self.radord_all_outer = radord_data['outer_radord'][0:self.n_mode]
+        self.radord_all_centr = radord_data['centr_radord'][0:self.n_mode]
+        outer_max_radord = np.max(self.radord_all_outer)
+        self.probe_radord = np.round(np.arange(6)*outer_max_radord/6+3).astype('int')
+        self.probe_outer = np.zeros(6, dtype='int')
+        for jj in range(6):
+            self.probe_outer[jj] = np.argwhere(radord_data['outer_radord'] == self.probe_radord[jj])[1]
+
+        ax2.plot(self.radord_all_outer, self.ogtl_ogc_outer_iter[this_iter], '+')
+        ax2.plot(self.probe_radord, self.ogtl_ogc_probes_iter[this_iter], 'o')
+        ax2.set_xlabel('KL group', size='large')
+        ax2.set_ylabel('OGC coefficient', size='large')
+
+        ax2.grid()
+        ax2.legend(['OGTL iteration %d'%this_iter])
+
+        ax3.plot(self.ogtl_ticks, np.array(self.ogtl_ogc_centr_iter), drawstyle='steps-post')
+        #a3x.set_xticks(OGTL_ticks[1:-1:4])
+        ax3.grid()
+        ax3.set_xlabel('elapsed time [s]', size='large')
+        ax3.set_ylabel('OGC coefficient', size='large')
+        ax3.set_title('central segments', fontsize=13)
+        #ax3.legend()
+        #ax3.set_xlim([0,2.05])
+
+        ax4.plot(self.radord_all_centr, self.ogtl_ogc_centr_iter[this_iter],'+')
+        ax4.plot(self.probe_radord, self.ogtl_ogc_probes_iter[this_iter], 'o')
+        ax4.set_xlabel('KL group', size='large')
+        ax4.set_ylabel('OGC coefficient', size='large')
+        #ax4.set_xlim([480,500])
+        ax4.grid()
+        ax4.legend(['OGTL iteration %d'%this_iter])
