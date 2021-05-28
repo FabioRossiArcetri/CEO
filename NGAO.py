@@ -353,7 +353,7 @@ class NGAO(object):
             #TODOFR: Flag to generate or not the file
             if not os.path.isfile(self.IMfnameFull):  
                 self.D_M2_MODES = self.gmt.NGWS_calibrate(self.wfs,self.gs, stroke=self.Zstroke)
-                tosave = dict(D_M2=D_M2_MODES, first_mode=self.z_first_mode, Stroke=self.Zstroke)
+                tosave = dict(D_M2=self.D_M2_MODES, first_mode=self.z_first_mode, Stroke=self.Zstroke)
                 np.savez(self.IMfnameFull, **tosave)
             else: 
                 print(u'Reading file: '+self.IMfnameFull)
