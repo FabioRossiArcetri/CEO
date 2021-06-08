@@ -28,7 +28,8 @@ class phaseContrastSensor(object):
         self.nPix = nPix
         self.fitsPupilFile = None
         self.fitsPhaseFile = None
-        self._p = np.zeros((nPix,nPix))
+        self.frame = None
+        self.longExposureframe = None
         self.normalisEDFrame = None
         self.referenceFrame = None
         self.interactionMatrix = None
@@ -42,7 +43,6 @@ class phaseContrastSensor(object):
                 longExposureFrame
                 frame
                 fitsPhaseFile"""
-        self._p = np.zeros((self.nPix,self.nPix))
     
     def poppyFits(self,array2conv,fileName = 'gmtPhase.fits',typeOfArray = 'phase'):
         """This function takes an array and turns it into a fits that can be read by poppy.FITSopticsElement
@@ -83,7 +83,7 @@ class phaseContrastSensor(object):
         self.normalisEDFrame = frame - (self.referenceFrame*expTimeMs)
         return 1
     
-    def propagate(self,wavefrontObject, fluxPerMs,curWavelength = None,noMask = False):
+    def propagate(self,fluxPerMs,curWavelength = None,noMask = False):
         """does the propagation into the phase contrast sensor and produces an image of the phase contrast 
         
         input: telescope wavefront, flux per unit of ms for the whole collecting area, telescope pupil
@@ -91,8 +91,6 @@ class phaseContrastSensor(object):
         ouput: a frame
         
         """
-        self.poppyFits(wavefrontObject.phase.host())
-        
         if curWavelength == None:
             curWavelength = self.wavelength
             
@@ -120,9 +118,16 @@ class phaseContrastSensor(object):
         osys.add_pupil(det)
 
         poppyFrame = osys.calc_psf(wavelength = curWavelength)
-        self._p += poppyFrame[0].data *fluxPerMs
+        self.frame = poppyFrame[0].data *fluxPerMs
         return 1
     
+    def longExposure(self, expo):
+        """take the latest phase from gmt use it to propagate through the phase contrast sensor and 
+        add the newly created frame to the long exposure frame
+        
+        input: wavefront from the telescope
+        optional input:
+        output: updated long exposure frame"""
         
         
     
@@ -130,13 +135,14 @@ class phaseContrastSensor(object):
         """This is meant to simulate photon noise and various camera noises"""
     
     
-    def setReference(self,wavefrontObject,flux):
+    def setReference(self,flatWavefront,flux):
         """ calculate the reference image of the perfect telescope without noise
         
         input: wavefront of the perfect telescope
         output: image of the perfect telescope through the phase contrast
         """
-        self.propagate(wavefrontObject,flux)
+        self.poppyFits(flatWavefront)
+        self.propagate(flux)
         self.referenceFrame = self.frame.copy()
         return 1
         
@@ -390,9 +396,9 @@ if __name__=='__main__':
         
         zelda.propagate(1)
         zelda.analyse(zelda.frame,1)
-        res.append(zelda.reconstructionVector)
+        res.append(zelda.reconstructionVector[randSeg])
         
-    res = np.ndarray(res)
+    # res = np.ndarray(res)
     #and display how the result went
     plt.figure(7)
     plt.clf()
