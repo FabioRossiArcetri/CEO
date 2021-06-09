@@ -28,7 +28,7 @@ class phaseContrastSensor(object):
         self.nPix = nPix
         self.fitsPupilFile = None
         self.fitsPhaseFile = None
-        self.frame = None
+        self.frame = np.zeros((nPix,nPix))
         self.longExposureframe = None
         self.normalisEDFrame = None
         self.referenceFrame = None
@@ -43,6 +43,7 @@ class phaseContrastSensor(object):
                 longExposureFrame
                 frame
                 fitsPhaseFile"""
+        self.frame = np.zeros((self.nPix,self.nPix))
     
     def poppyFits(self,array2conv,fileName = 'gmtPhase.fits',typeOfArray = 'phase'):
         """This function takes an array and turns it into a fits that can be read by poppy.FITSopticsElement
@@ -118,7 +119,7 @@ class phaseContrastSensor(object):
         osys.add_pupil(det)
 
         poppyFrame = osys.calc_psf(wavelength = curWavelength)
-        self.frame = poppyFrame[0].data *fluxPerMs
+        self.frame += poppyFrame[0].data * fluxPerMs
         return 1
     
     def longExposure(self, expo):
@@ -132,8 +133,13 @@ class phaseContrastSensor(object):
         
     
     def camera(self):
-        """This is meant to simulate photon noise and various camera noises"""
-    
+        """This is meant to simulate photon noise and various camera noises
+        (and introduces photon noise by default)
+        input: frame, 
+        optional input : RON, background noise, EMCCD Excessnoise
+        output: noisy image
+        """
+        self.frame *= np.random.poisson(self.frame)
     
     def setReference(self,flatWavefront,flux):
         """ calculate the reference image of the perfect telescope without noise
@@ -189,6 +195,7 @@ class phaseContrastSensor(object):
             #set up the wavefront to feed to the propagation
             wavefrontObject.reset()
             telescopeObject.reset()
+            self.reset()
             telescopeObject.M2.modes.a[s,0] = strokes*10**-9
             telescopeObject.M2.modes.update()
             telescopeObject.propagate(wavefrontObject)
@@ -252,7 +259,7 @@ if __name__=='__main__':
     M2_n_modes = 675 # Karhunen-Loeve per M2 segment
     #M2_modes_set = u"ASM_DDKLs_S7OC04184_675kls"
     M2_modes_set = u"ASM_fittedKLs_doubleDiag"
-    
+    expTimeMs = 150
     
     nPx = 1024
     
@@ -263,12 +270,13 @@ if __name__=='__main__':
     project_truss_onaxis = True
     tel_throughput = 0.9**4 # M1 + M2 + M3 + GMTIFS dichroic = 0.9^4 
     nseg = 7
-
+    detectorQE = 0.5
+    
     simul_truss_mask=True  # If True, it applies to closed loop simulation, and slope-null calibration only (NOT IM calibration)
     
     #base configuration of the wavefront
     wl2nd = 850e-9
-    delta_wl2nd = 20e-9
+    delta_wl2nd = 150e-9
     e0_Iband = 2.61e12 # zeropoint in photons/s in I band over the GMT pupil (check official photometry table!)
     
     #---- Scale zeropoint for the desired bandwidth:
@@ -279,7 +287,7 @@ if __name__=='__main__':
     gs = ceo.Source([wl2nd,delta_wl2nd,e0], magnitude=mag, zenith=0.,azimuth=0., rays_box_size=D, 
             rays_box_sampling=nPx, rays_origin=[0.0,0.0,25])
     gs.rays.rot_angle = 15*np.pi/180
-    nPhotPerMs = gs.nPhoton[0] * PupilArea * 10**-3
+    nPhotPerMs = gs.nPhoton[0] * PupilArea * 10**-3 * tel_throughput * detectorQE
     
     gmt = ceo.GMT_MX(M2_mirror_modes=M2_modes_set, M2_N_MODE=M2_n_modes)
     
@@ -293,6 +301,7 @@ if __name__=='__main__':
     
     gmt.reset()
     gs.reset()
+    zelda.reset()
     gmt.propagate(gs)
     gmtMask = gs.amplitude.host()
     plt.figure(1)
@@ -310,6 +319,7 @@ if __name__=='__main__':
     #Now apply a piston to one segment and do the phase contrast image of this:
     gmt.reset()
     gs.reset()
+    zelda.reset()
     gmt.M2.modes.a[0,0] = 200*10**-9
     gmt.M2.modes.update()
     gmt.propagate(gs)
@@ -330,6 +340,7 @@ if __name__=='__main__':
     #first we need a flat wavefront
     gmt.reset()
     gs.reset()
+    zelda.reset()
     gmt.propagate(gs)
     
     #now we feed the wavefront to the object
@@ -350,6 +361,7 @@ if __name__=='__main__':
     #now repeat this with a piston on one segment
     gmt.reset()
     gs.reset()
+    zelda.reset()
     gmt.M2.modes.a[0,0] = 200*10**-9
     gmt.M2.modes.update()
     gmt.propagate(gs)
@@ -373,6 +385,7 @@ if __name__=='__main__':
     
     gmt.reset()
     gs.reset()
+    zelda.reset()
     gmt.M2.modes.a[randSeg,0] = randpist
     gmt.M2.modes.update()
     gmt.propagate(gs)
@@ -389,6 +402,7 @@ if __name__=='__main__':
     for p in pist2apply:
         gmt.reset()
         gs.reset()
+        zelda.reset()
         gmt.M2.modes.a[randSeg,0] = p
         gmt.M2.modes.update()
         gmt.propagate(gs)
@@ -396,11 +410,29 @@ if __name__=='__main__':
         
         zelda.propagate(1)
         zelda.analyse(zelda.frame,1)
-        res.append(zelda.reconstructionVector[randSeg])
+        res.append(zelda.reconstructionVector)
         
-    # res = np.ndarray(res)
+    # res = np.array(res)
     #and display how the result went
     plt.figure(7)
     plt.clf()
     plt.plot(pist2apply,res,'+-')
+    
+    # test the camera noise
+    zelda.reset()
+    for t in range(expTimeMs):
+        gmt.reset()
+        gs.reset()
+        gmt.propagate(gs)
+        fileName = zelda.poppyFits(gs.phase.host())
+        zelda.propagate(nPhotPerMs)
+    
+    
+    plt.figure(8)
+    plt.clf()
+    fig,axs = plt.subplots(num = 8, nrows=1,ncols=2)
+    axs[0].imshow(zelda.frame)
+    
+    zelda.camera()
+    axs[1].imshow(zelda.frame)
     
