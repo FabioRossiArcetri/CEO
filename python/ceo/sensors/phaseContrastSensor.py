@@ -142,12 +142,12 @@ class phaseContrastSensor(object):
         """
         rng = np.random.default_rng()
         
-        self.frame *= rng.poisson(self.frame)
+        self.frame = rng.poisson(self.frame)
         self.frame += rng.normal(loc = bias, scale = RON)
         
         
     
-    def setReference(self,wavefrontObject):
+    def set_reference_image(self,wavefrontObject):
         """ calculate the reference image of the perfect telescope without noise
         
         input: wavefront of the perfect telescope
@@ -184,7 +184,7 @@ class phaseContrastSensor(object):
         
         
     def analyse(self, frame, expTimeMs):
-        """Unsure what this should do"""
+        """Unsure what this should do for now """
 
 
         
@@ -218,7 +218,6 @@ class phaseContrastSensor(object):
 
 
 if __name__=='__main__':
-    print('toto')
     
     M2_n_modes = 675 # Karhunen-Loeve per M2 segment
     #M2_modes_set = u"ASM_DDKLs_S7OC04184_675kls"
@@ -403,28 +402,28 @@ if __name__=='__main__':
     print(reconstructionVector)
     
     # #lets do a sweep for the fun of it
-    pist2apply = np.arange(-3*750,3*751,750/8)*10**-9
-    randSeg = 4
-    res = []
-    for p in pist2apply:
-        gmt.reset()
-        gs.reset()
-        zelda.reset()
-        gmt.M2.modes.a[randSeg,0] = p
-        gmt.M2.modes.update()
-        gmt.propagate(gs)
+    # pist2apply = np.arange(-3*750,3*751,750/8)*10**-9
+    # randSeg = 4
+    # res = []
+    # for p in pist2apply:
+    #     gmt.reset()
+    #     gs.reset()
+    #     zelda.reset()
+    #     gmt.M2.modes.a[randSeg,0] = p
+    #     gmt.M2.modes.update()
+    #     gmt.propagate(gs)
         
-        zelda.propagate(gs)
-        zelda.process(1)
-        reconstructionVector = zelda.frame.reshape(-1) @ reconstructionMatrix
-        reconstructionVector -= reconstructionVector[0]
-        res.append(reconstructionVector)
+    #     zelda.propagate(gs)
+    #     zelda.process(1)
+    #     reconstructionVector = zelda.frame.reshape(-1) @ reconstructionMatrix
+    #     reconstructionVector -= reconstructionVector[0]
+    #     res.append(reconstructionVector)
         
     # # res = np.array(res)
     #and display how the result went
-    plt.figure(7)
-    plt.clf()
-    plt.plot(pist2apply,res,'+-')
+    # plt.figure(7)
+    # plt.clf()
+    # plt.plot(pist2apply,res,'+-')
     
     # test the camera noise
     zelda.reset()
@@ -434,7 +433,7 @@ if __name__=='__main__':
         gmt.propagate(gs)
         zelda.propagate(gs)
     
-    
+    noiselessFrame = zelda.frame.copy()
     plt.figure(8,figsize=(12,8))
     plt.clf()
     fig,axs = plt.subplots(num = 8, nrows=1,ncols=3)
@@ -446,5 +445,35 @@ if __name__=='__main__':
     #try to normalise the now noisy image
     zelda.process(expTimeMs)
     axs[2].imshow(zelda.frame)
+    
+    #Now a noisy sweep to see if it works 
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    #This will take a very long while if you execut it!
+    
+    pist2apply = np.arange(-3*750,3*751,750/8)*10**-9
+    randSeg = 4
+    res = []
+    for p in pist2apply:
+        zelda.reset()
+        gmt.reset()
+        gs.reset()
+        
+        gmt.M2.modes.a[randSeg,0] = p
+        gmt.M2.modes.update()
+        gmt.propagate(gs)
+        
+        zelda.propagate(gs)
+        #this is cheating do not do that at home!
+        zelda.frame *= expTimeMs
+        zelda.process(expTimeMs)
+        reconstructionVector = zelda.frame.reshape(-1) @ (reconstructionMatrix/expTimeMs)
+        reconstructionVector -= reconstructionVector[0]
+        res.append(reconstructionVector)
+        
+    # res = np.array(res)
+    # and display how the result went
+    plt.figure(9)
+    plt.clf()
+    plt.plot(pist2apply,res,'+-')
     
     
