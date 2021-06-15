@@ -14,10 +14,27 @@ from astropy.io import fits
 class phaseContrastSensor(object):
     """object implementing all the necessary functions for the phase contrast sensor
     to produce a measurement.
-    Documentation under developpement."""
+    
+    Parameters
+    ----------
+    phaseMaskDiameter: float [lambda/D]
+        Diameter of the central depression of the phase mask in unit of lambda/D
+    phaseMaskDelay: float [wavelength]
+        delay created by the central depression in unit of fraction of the central wavelength
+    wavelength: float [meters]
+        central wavelength of the light used in the phase contrast sensor. in meters
+    telescopeDiameter: float (optionnal, default = 25.695 m) [meters]
+        diameter of the telescope pupil in meter. needed for poppy to give 
+        proper units and sizing to pictures.
+    poppyOverSampling : int (optionnal, default = 6) [zero padding]
+        Oversampling of the focal plan, or zeros padding of the pupil plan.6 
+        means the array is 6 times bigger than the size of the pupil in pixels or
+        that the diffraction limited PSF has 6 pixels accross the FWHM
+    
+    """
     
     def __init__(self,phaseMaskDiameter,phaseMaskDelay, wavelength, 
-                 nPix, bandwidth = 0, telescopeDiameter = 25.695, poppyOverSampling = 6):
+                 nPix, telescopeDiameter = 25.695, poppyOverSampling = 6 , bandwidth = 0):
         self.maskDelay = phaseMaskDelay
         self.maskRadius = phaseMaskDiameter/2
         self.maskDiameter = phaseMaskDiameter
@@ -51,7 +68,7 @@ class phaseContrastSensor(object):
     def poppyFits(self,array2conv,fileName = 'gmtPhase.fits',typeOfArray = 'phase'):
         """This function takes an array and turns it into a fits that can be read by poppy.FITSopticsElement
         
-        input: the array 2 convert,
+        input: the array to convert,
         optionnal input: the name of the file, The type of array being converted
         output: the name of the fits file"""
         
