@@ -159,8 +159,8 @@ class phaseContrastSensor(object):
         """
         rng = np.random.default_rng()
         
-        self.frame = rng.poisson(self.frame)
-        self.frame += rng.normal(loc = bias, scale = RON)
+        self.frame = rng.poisson(self.frame).astype(float)
+        self.frame += rng.normal(loc = bias, scale = RON, size = self.frame.shape)
         
         
     
@@ -322,7 +322,7 @@ if __name__=='__main__':
     gmt.propagate(gs)
     
     #now we feed the wavefront to the object
-    zelda.setReference(gs)
+    zelda.set_reference_image(gs)
     plt.figure(4)
     plt.clf()
     plt.imshow(zelda.referenceFrame)

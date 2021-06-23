@@ -20,6 +20,7 @@ import cupy as cp
 from scipy import ndimage
 from scipy import signal 
 from scipy.interpolate import CubicSpline
+import poppy
 
 #----- Visualization
 import matplotlib.pyplot as plt
@@ -27,6 +28,12 @@ import matplotlib.pyplot as plt
 # .ini file parsing
 from configparser import ConfigParser
 from datetime import datetime
+
+#for the phase contrast sensor
+tmppath = os.getcwd()
+os.chdir('/home/alcheffot/CEO/python/ceo/sensors/')
+import phaseContrastSensor as zpc
+os.chdir(tmppath)
  
 PYRAMID_SENSOR = 'pyramid'
 PHASE_CONTRAST_SENSOR = 'phasecontrast' 
@@ -173,6 +180,8 @@ class NGAO(object):
             self.chan2_band_inband = eval(parser.get('2ndChan', 'deltaWavelength_ClosestBand'))
             self.chan2_mag = eval(parser.get('2ndChan', 'mag'))
             self.chan2_e0 = self.chan2_e0_inband * (self.chan2_band/self.chan2_band_inband) / self.PupilArea    #in ph/m^2/s in the desired bandwidth
+            self.chan2_throughput =  self.tel_throughput * eval(parser.get('2ndChan','throughput'))  # NGWS board: 0.4
+            self.chan2_detQE = eval(parser.get('2ndChan','detectorQE'))
             #setup of the parameters for the sensor itself.
             self.chan2_sensorType = eval(parser.get('2ndChan', 'sensorType'))
             
@@ -188,7 +197,6 @@ class NGAO(object):
                 self.chan2_pyr_separation = eval(parser.get('2ndChan','pyr_separation'))//self.chan2_pyr_binning     # separation between centers of adjacent sub-pupil images on the detector [pix]
                 self.chan2_pyr_modulation = eval(parser.get('2ndChan','pyr_modulation'))     # modulation radius in lambda/D units
                 self.chan2_pyr_angle = eval(parser.get('2ndChan','pyr_angle'))         # angle between pyramid facets and GMT pupil (in deg)
-                self.chan2_throughput =  self.tel_throughput * eval(parser.get('2ndChan','throughput'))  # NGWS board: 0.4
                 
                 self.chan2_pyr_fov = eval(parser.get('2ndChan','pyr_fov'))               # arcsec in diameter
                 self.chan2_RONval = eval(parser.get('2ndChan','RONval'))                # e- RMS
@@ -212,8 +220,18 @@ class NGAO(object):
                 self.chan2_applySignalMasking = eval(parser.get('2ndChan','applySignalMasking'))
                 
             elif self.chan2_sensorType.lower()==PHASE_CONTRAST_SENSOR:
+                self.chan2_nPx = eval(parser.get('2ndChan','nPx'))
+                self.chan2_phaseMaskDiam = eval(parser.get('2ndChan','phaseMaskDiameter'))
+                self.chan2_phaseMaskDelay = eval(parser.get('2ndChan','phaseMaskDelay'))
+                self.chan2_poppyOversampling = eval(parser.get('2ndChan','poppyOversampling'))
+                self.chan2_gmtCalib = eval(parser.get('2ndChan','gmtStandardCalibration'))
                 
-                print('sensor not yet implemented')
+                self.chan2_wfs = zpc.phaseContrastSensor(self.chan2_phaseMaskDiam,
+                                                         self.chan2_phaseMaskDelay,
+                                                         self.chan2_cwl,
+                                                         self.chan2_nPx,
+                                                         poppyOverSampling = self.chan2_poppyOversampling)
+                
             elif self.chan2_sensorType.lower() == 'lift':
                 print('sensor not yet implemented')
             else:
@@ -241,11 +259,12 @@ class NGAO(object):
             print('Number of NGAO GS photons/s/m^2: %.1f'%(self.gs.nPhoton))
             print('Number of expected NGAO GS photons [ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)/self.PupilArea))
             print(u"Number of pixels across %1.1f-m array: %d"%(self.D,self.nPx))
-            if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
+            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                 self.chan2_gs = ceo.Source([self.chan2_cwl,self.chan2_band,self.chan2_e0], magnitude=self.chan2_mag, 
                                        zenith=0.,azimuth=0., rays_box_size=self.D, 
                                        rays_box_sampling=self.chan2_nPx, rays_origin=[0.0,0.0,25])
-                self.chan2_gs.rays.rot_angle = self.chan2_pyr_angle*np.pi/180
+                if self.chan2_sensorType == PYRAMID_SENSOR:
+                    self.chan2_gs.rays.rot_angle = self.chan2_pyr_angle*np.pi/180
             
                 print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_gs.nPhoton))
                 print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_e0*10**(-0.4*self.chan2_mag)))
@@ -421,6 +440,8 @@ class NGAO(object):
     def getOrCalibrateIM(self):
         """IM calibration for the first channel"""
         if self.simul_onaxis_AO==True:
+            # tmpgmtTruss = self.gmt.project_truss_onaxis
+            # self.gmt.project_truss_onaxis = False
             ### Calibrate IM and save or Restore from file
             RECdir = self.dir_calib
             #----> fitted KLs (ASM_fittedKLs)
@@ -439,6 +460,8 @@ class NGAO(object):
                 ftemp = np.load(self.IMfnameFull)
                 self.D_M2_MODES = ftemp.f.D_M2
                 ftemp.close()
+            
+            # self.gmt.project_truss_onaxis = tmpgmtTruss
 
             nall = (self.D_M2_MODES.shape)[1]  ## number of modes calibrated
             self.n_mode = nall//self.nseg
@@ -672,8 +695,60 @@ class NGAO(object):
             #Override slope null vector
             self.chan2_wfs.reset()
             self.chan2_wfs.set_reference_measurement(self.chan2_gs)
-        if self.chan2_sensorType.lower()=='phasecontrast':
+        if self.chan2_sensorType.lower()==PHASE_CONTRAST_SENSOR:
             print('calibrating the phase contrast sensor for the second channel' )
+            #This is a prerequisite for poppy to work.
+            # self.gmt.project_truss_onaxis = True
+            self.gmt.reset()
+            self.chan2_gs.reset()
+            self.chan2_wfs.reset()
+            self.gmt.propagate(self.chan2_gs)
+            gmtMask = self.chan2_gs.amplitude.host()
+            #turn the pupil maks into a format poppy can read
+            fileName = self.chan2_wfs.poppyFits(gmtMask,'GMTpupil.fits', 'transmision')
+            
+            #Setting up the reference image for later normalisation
+            self.chan2_wfs.setReference(self.chan2_gs)
+            #nPhoton is given in photon /second / m² hence the 10⁻³ to estimate the flux per ms
+            self.chan2_wfs.fluxPerMs = self.chan2_gs.nPhoton[0] * self.PupilArea * \
+                            10**-3 * self.tel_throughput * self.chan2_detQE
+            if self.chan2_gmtCalib:
+                tmpfitsPupFile = self.chan2_wfs.fitsPupilFile
+                tmpproject_truss_onaxis = self.gmt.project_truss_onaxis
+                self.gmt.project_truss_onaxis = False
+                self.gs.reset()
+                self.gmt.reset()
+                self.gmt.propagate(self.chan2_gs)
+                
+                self.chan2_wfs.poppyFits(self.chan2_gs.amplitude.host() \
+                                            ,fileName='noTrussGMTMask.fits', typeOfArray= 'amplitude')
+            
+            interactionMatrix  = np.zeros((self.nseg,self.chan2_nPx**2))
+            for s in range(self.nseg):
+                #set up the wavefront to feed to the propagation
+                self.chan2_gs.reset()
+                self.gmt.reset()
+                self.chan2_wfs.reset()
+                self.gmt.M2.modes.a[s,0] = self.chan2_PSstroke
+                self.gmt.M2.modes.update()
+                self.gmt.propagate(self.chan2_gs)
+                
+                # feed the wavefront to the propagate method
+                self.chan2_wfs.propagate(self.chan2_gs)
+                
+                if self.chan2_gmtCalib:#if we removed it replace the truss on the images
+                    self.chan2_wfs.frame *= gmtMask
+                errorReturn = self.chan2_wfs.process(1)
+                interactionMatrix[s] = self.chan2_wfs.frame.reshape(-1)/self.chan2_PSstroke
+            
+            self.chan2_R2m = np.linalg.pinv(interactionMatrix)
+            
+            if self.chan2_gmtCalib:
+                self.chan2_wfs.fitsPupilFile = tmpfitsPupFile
+                self.gmt.project_truss_onaxis = tmpproject_truss_onaxis
+            
+            
+            
             
 
             
