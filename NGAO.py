@@ -1916,7 +1916,8 @@ class NGAO(object):
             if self.save_telemetry:
                 tosave.update(dict(a_M2_iter=self.a_M2_iter, da_M2_iter=self.da_M2_iter, wfe_gs_iter=self.wfe_gs_iter, spp_gs_iter=self.spp_gs_iter, 
                     seg_wfe_gs_iter=self.seg_wfe_gs_iter,wfs_meas_iter=wfs_meas_iter, wfgrad_iter=wfgrad_iter, seg_wfgrad_iter=seg_wfgrad_iter, 
-                                   opdr_spp_iter=self.crazy_spp_iter))
+                                   opdr_spp_iter=self.spp_gs_iter))
+                # opdr_spp_iter=self.crazy_spp_iter))
 
             # Pyramid WFS parameters
             tosave.update(dict(pyr_modulation=self.pyr_modulation, pyr_angle=self.pyr_angle, pyr_thr=self.pyr_thr, 
