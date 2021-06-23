@@ -27,6 +27,9 @@ import matplotlib.pyplot as plt
 # .ini file parsing
 from configparser import ConfigParser
 from datetime import datetime
+ 
+PYRAMID_SENSOR = 'pyramid'
+PHASE_CONTRAST_SENSOR = 'phasecontrast' 
 
 def zern_num(_num_):
     n = np.floor(np.sqrt(8*_num_-7)-1) // 2
@@ -91,6 +94,9 @@ class NGAO(object):
         self.fake_fast_spp_convergence = eval(parser.get('general', 'fake_fast_spp_convergence'))
         self.save_phres_decimated = eval(parser.get('general', 'save_phres_decimated'))
         self.save_psfse_decimated = eval(parser.get('general', 'save_psfse_decimated'))        
+        self.AOinitTime = eval(parser.get('general', 'AOinit'))
+        self.SPPctrlInitTime = eval(parser.get('general', 'SPPctrlInit'))
+        self.SPP2ndChInitTime = eval(parser.get('general', 'SPP2ndChInit'))
 
         self.sep_req = self.sep_lD * self.lim/ 24.5 * ceo.constants.RAD2MAS  # in mas
         self.knumber = 2.*cp.pi/self.lim
@@ -173,7 +179,8 @@ class NGAO(object):
             # initialisation of the second channel wavefront sensor
             if self.chan2_sensorType.lower() == 'idealpistonsensor':
                 print('initialised elsewhere in the code')
-            elif self.chan2_sensorType.lower() == 'pyramid':
+                
+            elif self.chan2_sensorType.lower() == PYRAMID_SENSOR:
                 self.chan2_pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))
                 self.chan2_nLenslet = eval(parser.get('2ndChan','nLenslet'))//self.chan2_pyr_binning            # sub-apertures across the pupil
                 self.chan2_nPx = self.chan2_nLenslet*eval(parser.get('2ndChan','nPx'))
@@ -204,7 +211,8 @@ class NGAO(object):
                 
                 self.chan2_applySignalMasking = eval(parser.get('2ndChan','applySignalMasking'))
                 
-            elif self.chan2_sensorType.lower()=='phasecontrast':
+            elif self.chan2_sensorType.lower()==PHASE_CONTRAST_SENSOR:
+                
                 print('sensor not yet implemented')
             elif self.chan2_sensorType.lower() == 'lift':
                 print('sensor not yet implemented')
@@ -233,14 +241,14 @@ class NGAO(object):
             print('Number of NGAO GS photons/s/m^2: %.1f'%(self.gs.nPhoton))
             print('Number of expected NGAO GS photons [ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)/self.PupilArea))
             print(u"Number of pixels across %1.1f-m array: %d"%(self.D,self.nPx))
+            if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
+                self.chan2_gs = ceo.Source([self.chan2_cwl,self.chan2_band,self.chan2_e0], magnitude=self.chan2_mag, 
+                                       zenith=0.,azimuth=0., rays_box_size=self.D, 
+                                       rays_box_sampling=self.chan2_nPx, rays_origin=[0.0,0.0,25])
+                self.chan2_gs.rays.rot_angle = self.chan2_pyr_angle*np.pi/180
             
-            self.chan2_gs = ceo.Source([self.chan2_cwl,self.chan2_band,self.chan2_e0], magnitude=self.chan2_mag, 
-                                   zenith=0.,azimuth=0., rays_box_size=self.D, 
-                                   rays_box_sampling=self.chan2_nPx, rays_origin=[0.0,0.0,25])
-            self.chan2_gs.rays.rot_angle = self.chan2_pyr_angle*np.pi/180
-            
-            print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_gs.nPhoton))
-            print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_e0*10**(-0.4*self.chan2_mag)))
+                print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_gs.nPhoton))
+                print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.chan2_e0*10**(-0.4*self.chan2_mag)))
             
                         
         if self.simul_turb:
@@ -387,19 +395,19 @@ class NGAO(object):
         sx2d = wavefrontSensorobject.get_sx2d(this_sx=sx)
         sy2d = wavefrontSensorobject.get_sy2d(this_sy=sy)
         fig, (ax1,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(6,4)
+        fig.set_size_inches(10,4)
         if title==None:
             title = ['Sx', 'Sy']
         ax1.set_title(title[0])
         ax1.tick_params(axis='both', which='both', bottom=False, top=False, 
                         labelbottom=False, right=False, left=False, labelleft=False)
-        imm = ax1.imshow(sx2d, interpolation='None')#,origin='lower', vmin=-1, vmax=1)
+        imm = ax1.imshow(sx2d, interpolation='None',origin='lower')#,origin='lower', vmin=-1, vmax=1)
         clb = fig.colorbar(imm, ax=ax1, format="%.4f")
         clb.ax.tick_params(labelsize=12)    
         ax2.set_title(title[1])
         ax2.tick_params(axis='both', which='both', bottom=False, top=False, 
                         labelbottom=False, right=False, left=False, labelleft=False)
-        imm2 = ax2.imshow(sy2d, interpolation='None')#,origin='lower', vmin=-1, vmax=1)
+        imm2 = ax2.imshow(sy2d, interpolation='None',origin='lower')#,origin='lower', vmin=-1, vmax=1)
         clb2 = fig.colorbar(imm2, ax=ax2, format="%.4f")  
         clb2.ax.tick_params(labelsize=12)    
         return (sx2d,sy2d)
@@ -595,7 +603,7 @@ class NGAO(object):
     def nonIdealPistonSensorCalibAndRM(self):
         """Initialisation of any of the three sensors considered for the second channel"""
         if self.chan2_sensorType.lower() == "pyramid":
-            print("calibrating the pyramidwavefrontsensor for the second channel" )
+            print("calibrating the pyramid wavefrontsensor for the second channel" )
             self.chan2_gs.reset()
             self.gmt.reset()
             self.gmt.propagate(self.chan2_gs)
@@ -664,8 +672,8 @@ class NGAO(object):
             #Override slope null vector
             self.chan2_wfs.reset()
             self.chan2_wfs.set_reference_measurement(self.chan2_gs)
-            
-            
+        if self.chan2_sensorType.lower()=='phasecontrast':
+            print('calibrating the phase contrast sensor for the second channel' )
             
 
             
@@ -1192,6 +1200,7 @@ class NGAO(object):
         self.generalizedIMInverse()
         self.addRowsOfRemovedModes()
         self.idealPistonSensor()
+        self.nonIdealPistonSensorCalibAndRM()
         self.doOTGLsimul()
         self.simulTurbulence()
         self.modalPerfEval()
@@ -1215,6 +1224,7 @@ class NGAO(object):
         self.generalizedIMInverse()
         self.addRowsOfRemovedModes()
         self.idealPistonSensor()
+        self.nonIdealPistonSensorCalibAndRM()
         self.doOTGLsimul()
         self.simulTurbulence()
         self.modalPerfEval()
@@ -1313,7 +1323,7 @@ class NGAO(object):
             print(' WF RMS: %.1f nm'%(self.gs.phaseRms()*1e9))
             print('SPP RMS: %.1f nm'%(np.std(self.gs.piston('segments'))*1e9))
 
-        AOinit = 0 #round(0.10/Tsim)               # close the AO loop
+        AOinit = self.AOinitTime #round(0.10/Tsim)               # close the AO loop
 
         if not self.simul_turb:
             #--- Timing when no turbulence is simulated
@@ -1323,8 +1333,8 @@ class NGAO(object):
             self.totSimulInit = 30                  # start PSF integration at this iteration
             # self.SPPctrlInit  = float('inf')        # start controlling SPP
             # self.SPP2ndChInit = float('inf')        # Apply 2nd channel correction (with ideal SPS)
-            self.SPPctrlInit  = AOinit+round(0.05/self.Tsim)+1       # start controlling SPP
-            self.SPP2ndChInit = AOinit+round(0.1/self.Tsim)        # start applying 2nd channel correction (with ideal SPS)
+            self.SPPctrlInit  = AOinit+round(self.SPPctrlInitTime/self.Tsim)+1       # start controlling SPP
+            self.SPP2ndChInit = AOinit+round(self.SPP2ndChInitTime/self.Tsim)        # start applying 2nd channel correction (with ideal SPS)
             self.SPP2ndCh_Ts  = round(self.chan2_exposure_time/self.Tsim)       # 2nd channel sampling time (in number of iterations)
             self.SPP2ndCh_count = 0
             
@@ -1335,8 +1345,8 @@ class NGAO(object):
             self.totSimulIter = round(self.totSimulTime/self.Tsim) # simulation duration [iterations]
 
             AOinit = 0 #round(0.10/Tsim)               # close the AO loop
-            self.SPPctrlInit  = AOinit+round(0.05/self.Tsim)+1       # start controlling SPP
-            self.SPP2ndChInit = AOinit+round(0.1/self.Tsim)        # start applying 2nd channel correction (with ideal SPS)
+            self.SPPctrlInit  = AOinit+round(self.SPPctrlInitTime/self.Tsim)+1       # start controlling SPP
+            self.SPP2ndChInit = AOinit+round(self.SPP2ndChInitTime/self.Tsim)        # start applying 2nd channel correction (with ideal SPS)
             self.SPP2ndCh_Ts  = round(self.chan2_exposure_time/self.Tsim)       # 2nd channel sampling time (in number of iterations)
             self.SPP2ndCh_count = 0
 
@@ -1458,11 +1468,15 @@ class NGAO(object):
             psf_range_mas = np.array([-900, 900]) # +/- 1 arcsec
             psf_range_pix = np.rint(psf_range_mas/self.fp_pixscale + self.nPx*self.npad/2).astype(int)
             
-            
+        self.chan2_pistEstList = []
+        self.chan2_correctionList = []
+        
+        
         for jj in range(self.totSimulIter):
             self.tid.tic()
             self.gs.reset()
-            self.chan2_gs.reset()
+            if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
+                self.chan2_gs.reset()
 
             #----- Update Turbulence --------------------------------------------
             if self.simul_turb:
@@ -1472,7 +1486,8 @@ class NGAO(object):
                     if self.save_telemetry:
                         self.r0_iter[jj] = self.atm.r0
                 self.atm.ray_tracing(self.gs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, jj*self.Tsim)
-                self.atm.ray_tracing(self.chan2_gs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, jj*self.Tsim)
+                if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
+                    self.atm.ray_tracing(self.chan2_gs, self.chan2_pixelSize,self.chan2_nPx,self.chan2_pixelSize,self.chan2_nPx, jj*self.Tsim)
 
                 if self.do_Phase_integration:
                     if jj >= PhIntInit:
@@ -1520,7 +1535,8 @@ class NGAO(object):
 
             #----- On-axis WFS measurement ---------------------------------------------------
             self.gmt.propagate(self.gs)
-            self.gmt.propagate(self.chan2_gs)
+            if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
+                self.gmt.propagate(self.chan2_gs)
 
             if self.do_Phase_integration:
                 if jj >= PhIntInit:
@@ -1596,7 +1612,8 @@ class NGAO(object):
                     a_OLCL_iter[:,:,jj] = self.M2modes_command + self.da_M2_iter[:,:,jj] 
 
                 myAOest1 *= gAO
-
+                
+                
                 if jj == self.SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
                     if self.fake_fast_spp_convergence and self.chan2_sensorType.lower()=='idealpistonsensor':
                         self.onps.reset()
@@ -1608,7 +1625,7 @@ class NGAO(object):
                         # print('comm_buffer when jj == self.SPP2ndChInit')
                         # print(comm_buffer)
                     
-                    if self.chan2_sensorType.lower() == 'pyramid':
+                    if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
                         self.chan2_wfs.reset()
                         self.chan2_wfs.propagate(self.chan2_gs)
 
@@ -1634,7 +1651,7 @@ class NGAO(object):
                             # print(comm_buffer)
                             
                             self.onps.reset()
-                        if self.chan2_sensorType.lower() == 'pyramid':
+                        if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
                             self.chan2_wfs.camera.readOut(self.chan2_exposure_time, 
                                                           self.chan2_RONval,
                                                           0,
@@ -1643,18 +1660,31 @@ class NGAO(object):
                             chan2_meas = self.chan2_wfs.get_measurement()
                             self.chan2_piston_estimate = self.chan2_R2m @ chan2_meas
                             self.chan2_piston_estimate -= self.chan2_piston_estimate[6]
+                            self.chan2_pistEstList.append([jj,self.chan2_piston_estimate])
+                            self.chan2_forCorrection = np.array([np.sign(a) if np.abs(a) > 10*10**-9 else 0 for a in self.chan2_piston_estimate])*self.gs.wavelength*0.8
+                            # self.chan2_forCorrection = np.sign(self.chan2_piston_estimate)*-1*self.gs.wavelength
+                            
                             sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,
-                                                                       *self.chan2_wfs.get_measurement(out_format='list' ),
-                                                                       title = ['sx measured by channel 2', 'sy measured by channel 2' ])
-                            sx2d, sy2d = self.pyr_display_signals_base(self.wfs,
-                                                                       *self.wfs.get_measurement(out_format='list' ),
-                                                                       title = ['sx measured by channel 1', 'sy measured by channel 1' ])
-                            print('\n estimate of the second channel')
-                            print(self.chan2_piston_estimate*10**9)
-                            print('actual M2 piston state')
-                            print(self.gmt.state['M2']['modes'][:,0]*10**9*2)
+                                                                        *self.chan2_wfs.get_measurement(out_format='list' ),
+                                                                        title = ['sx measured by channel 2', 'sy measured by channel 2' ])
+                            plt.figure()
+                            plt.imshow(self.chan2_gs.phase.host(),origin = 'lower')
+                            # sx2d, sy2d = self.pyr_display_signals_base(self.wfs,
+                            #                                             *self.wfs.get_measurement(out_format='list' ),
+                            #                                             title = ['sx measured by channel 1', 'sy measured by channel 1' ])
+                            # plt.figure('phase residuals')
+                            # fig, axs = plt.subplots(num='phase residuals', ncols = 2)
+                            # axs[0].imshow(self.gs.phase.host())
+                            # axs[1].imshow(self.chan2_gs.phase.host())
+                            
+                            # print('\n estimate of the second channel')
+                            # print(self.chan2_piston_estimate*10**9)
+                            # print('actual M2 piston state')
+                            # print(self.gmt.state['M2']['modes'][:,0]*10**9)
+                            # print('theoretical correction')
+                            # print((self.gmt.state['M2']['modes'][:,0]-self.chan2_forCorrection/2)*10**9)
                             # plt.pause(0.1)
-                            # comm_buffer[self.KL0_idx,:] += cp.asarray(self.chan2_piston_estimate[0:6,np.newaxis])
+                            comm_buffer[self.KL0_idx,:] -= cp.asarray(self.chan2_forCorrection[0:6,np.newaxis])
                             self.chan2_wfs.reset()
                             
                             
@@ -1664,7 +1694,7 @@ class NGAO(object):
                     else:
                         if self.chan2_sensorType.lower() == 'idealpistonsensor':
                             self.onps.propagate(self.gs)
-                        if self.chan2_sensorType.lower() == 'pyramid':
+                        if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
                             self.chan2_wfs.propagate(self.chan2_gs)
                             
                         self.SPP2ndCh_count+=1
