@@ -269,7 +269,7 @@ if __name__=='__main__':
     gmt.project_truss_onaxis = project_truss_onaxis
     
     #create the object for the phase contrast
-    zelda = phaseContrastSensor(1.06,0.25,wl2nd,nPx)
+    zelda = phaseContrastSensor(1.06,0.0625,wl2nd,nPx)
     strokes = 25*10**-9 #later for interaction matrix
     zelda.fluxPerMs = nPhotPerMs
     # zelda.fluxPerMs = 50
@@ -374,8 +374,8 @@ if __name__=='__main__':
         zelda.poppyFits(gs.amplitude.host() \
                                     ,fileName='noTrussGMTMask.fits', typeOfArray= 'amplitude')
     
-    interactionMatrix  = np.zeros((nseg,nPx**2))
-    for s in range(nseg):
+    interactionMatrix  = np.zeros((nseg-1,nPx**2))
+    for s in range(nseg-1):
         #set up the wavefront to feed to the propagation
         gs.reset()
         gmt.reset()
@@ -397,10 +397,10 @@ if __name__=='__main__':
     plt.figure(7)
     plt.clf()
     fig,axs = plt.subplots(num=7, ncols=3,nrows=3)
-    for i in range(nseg):
+    for i in range(interactionMatrix.shape[0]):
         axs[i//3,i%3].imshow(interactionMatrix[i].reshape(gmtMask.shape))
-    
-    reconstructionMatrix = np.linalg.pinv(interactionMatrix)
+    reconstructionMatrix = np.zeros((nPx**2,nseg))
+    reconstructionMatrix[:,:6] = np.linalg.pinv(interactionMatrix)
     
     # if gmtStandardIM:
     #     zelda.fitsPupilFile = tmpfitsPupFile
@@ -409,21 +409,23 @@ if __name__=='__main__':
     
     # #next we generate a random piston on a random segment and calculate the reconstructed piston
     # randSeg = np.random.randint(0,7)
+    randSeg = 1
+    randpist = 150*10**-9
     # randpist = (np.random.rand()-0.25)*750*10**-9/2
-    # print("segment {} has {} nm piston".format(randSeg,randpist*10**9))
+    print("segment {} has {} nm piston".format(randSeg,randpist*10**9))
     
-    # gmt.reset()
-    # gs.reset()
-    # zelda.reset()
-    # gmt.M2.modes.a[randSeg,0] = randpist
-    # gmt.M2.modes.update()
-    # gmt.propagate(gs)
-    # zelda.propagate(gs)
+    gmt.reset()
+    gs.reset()
+    zelda.reset()
+    gmt.M2.modes.a[randSeg,0] = randpist
+    gmt.M2.modes.update()
+    gmt.propagate(gs)
+    zelda.propagate(gs)
     
-    # zelda.process(10**-3)
-    # reconstructionVector =  zelda.frame.reshape(-1) @ reconstructionMatrix 
-    # reconstructionVector -= reconstructionVector[6]
-    # print(reconstructionVector)
+    zelda.process(10**-3)
+    reconstructionVector =  zelda.frame.reshape(-1) @ reconstructionMatrix 
+    reconstructionVector -= reconstructionVector[6]
+    print(reconstructionVector)
     
     #lets do a sweep for the fun of it
     pist2apply = np.arange(-3*715,3*716,715/8)*10**-9

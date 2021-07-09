@@ -29,14 +29,18 @@ import matplotlib.pyplot as plt
 from configparser import ConfigParser
 from datetime import datetime
 
-#for the phase contrast sensor
+#for the phase contrast sensor and lift
 tmppath = os.getcwd()
 os.chdir('/home/alcheffot/CEO/python/ceo/sensors/')
 import phaseContrastSensor as zpc
+import LiftCEO
 os.chdir(tmppath)
+
+
  
 PYRAMID_SENSOR = 'pyramid'
 PHASE_CONTRAST_SENSOR = 'phasecontrast' 
+LIFT = 'lift'
 
 def zern_num(_num_):
     n = np.floor(np.sqrt(8*_num_-7)-1) // 2
@@ -238,8 +242,10 @@ class NGAO(object):
                 
                 
                 
-            elif self.chan2_sensorType.lower() == 'lift':
-                print('sensor not yet implemented')
+            elif self.chan2_sensorType.lower() == LIFT:
+                self.chan2_wfs = LiftCEO.LiftCEO( path, parametersFile)
+                self.chan2_nPx = self.chan2_wfs.gridSize
+                
             else:
                 print('sensor not supported, assuming and ideal piston sensor' )
             
@@ -253,10 +259,6 @@ class NGAO(object):
             if self.pyr_modulation == 1.0: 
                 self.wfs.modulation_sampling = 16
             #wfs.modulation_sampling = 64
-            
-            
-
-                
 
             #---- NGS initialization
             self.gs = ceo.Source(self.band, magnitude=self.mag, zenith=0.,azimuth=0., rays_box_size=self.D, 
@@ -266,7 +268,7 @@ class NGAO(object):
             print('Number of NGAO GS photons/s/m^2: %.1f'%(self.gs.nPhoton))
             print('Number of expected NGAO GS photons [ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)/self.PupilArea))
             print(u"Number of pixels across %1.1f-m array: %d"%(self.D,self.nPx))
-            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                 self.chan2_gs = ceo.Source([self.chan2_cwl,self.chan2_band,self.chan2_e0], magnitude=self.chan2_mag, 
                                        zenith=0.,azimuth=0., rays_box_size=self.D, 
                                        rays_box_sampling=self.chan2_nPx, rays_origin=[0.0,0.0,25])
@@ -304,7 +306,7 @@ class NGAO(object):
         
         
 
-    def M2_KL_modes(self):
+    def M2_KL_modes(self,figsize = (15,5)):
         
         # Retrieve M2 KL modes
         M2 = self.gmt.M2.modes.M.host()
@@ -350,7 +352,7 @@ class NGAO(object):
 
         if self.VISU==True:
             fig, (ax1,ax2) = plt.subplots(ncols=2)
-            fig.set_size_inches(15,5)
+            fig.set_size_inches(figsize)
             imm = ax1.imshow(KLmap, cmap=plt.cm.winter)
             fig.colorbar(imm, ax=ax1)
             ax1.set_title('M2 KL %d'%(this_kl), fontsize=15)
@@ -385,7 +387,7 @@ class NGAO(object):
             plt.ylabel('KL RMS')
             plt.show()
         
-    def propagatePyramid(self):
+    def propagatePyramid(self,figsize = (15,5)):
         
         if self.simul_onaxis_AO:
             self.gs.reset()
@@ -399,14 +401,14 @@ class NGAO(object):
 
             if self.VISU:
                 fig, (ax1,ax2) = plt.subplots(ncols=2)
-                fig.set_size_inches(6,5)
+                fig.set_size_inches(figsize)
                 imm1 = ax1.imshow( np.sum(self.wfs.indpup, axis=0, dtype='bool')[extr:-1-extr, extr:-1-extr] )
                 imm2 = ax2.imshow(self.wfs.ccd_frame[extr:-1-extr, extr:-1-extr])
                 fig.colorbar(imm2, ax=ax2)
                 plt.show()
                 
 
-    def KL_modes_exit_pupil(self):
+    def KL_modes_exit_pupil(self,figsize = (15,5)):
                 
         #show segment KL modes in the exit pupil
         this_kl = 100
@@ -425,11 +427,11 @@ class NGAO(object):
             plt.show()
 
 
-    def pyr_display_signals_base(self,wavefrontSensorobject, sx, sy, title=None):
+    def pyr_display_signals_base(self,wavefrontSensorobject, sx, sy, title=None,figsize = (15,5)):
         sx2d = wavefrontSensorobject.get_sx2d(this_sx=sx)
         sy2d = wavefrontSensorobject.get_sy2d(this_sy=sy)
         fig, (ax1,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(10,4)
+        fig.set_size_inches(figsize)
         if title==None:
             title = ['Sx', 'Sy']
         ax1.set_title(title[0])
@@ -446,13 +448,13 @@ class NGAO(object):
         clb2.ax.tick_params(labelsize=12)    
         return (sx2d,sy2d)
             
-    def pyr_display_signals(self, title=None):                
+    def pyr_display_signals(self, title=None,figsize = (15,5)):                
         ## Visualize reference slope vector in 2D (for a flat WF)
         if self.simul_onaxis_AO and self.VISU:
             sx,sy = self.wfs.get_ref_measurement(out_format='list')
-            return self.pyr_display_signals_base(self.wfs,sx, sy)
+            return self.pyr_display_signals_base(self.wfs,sx, sy,figsize = figsize)
     
-    def getOrCalibrateIM(self):
+    def getOrCalibrateIM(self,figsize = (15,5)):
         """IM calibration for the first channel"""
         if self.simul_onaxis_AO==True:
             # tmpgmtTruss = self.gmt.project_truss_onaxis
@@ -483,7 +485,7 @@ class NGAO(object):
             print(u'AO WFS - M2 Segment Modal IM:')
             print(self.D_M2_MODES.shape)
             
-    def extractIMRequestedModes(self):
+    def extractIMRequestedModes(self,figsize = (15,5)):
         if self.simul_onaxis_AO==True:
             self.D_M2_split = []
             for kk in range(self.nseg):
@@ -499,7 +501,7 @@ class NGAO(object):
             del Dtemp
             del self.last_mode
                         
-    def applySignalMasks(self):
+    def applySignalMasks(self,figsize = (15,5)):
         if self.simul_onaxis_AO==True:
             self.D_AO = self.D_M2_MODES.copy()
             if self.seg_sig_masked:
@@ -518,10 +520,10 @@ class NGAO(object):
                 segmSigMaskAll = np.sum(self.wfs.segpist_signal_mask['mask'][0:6],axis=0)
                 pistSigMaskAll = np.sum(self.wfs.segment_signal_mask['mask'], axis=0)
                 (sx2dtemp, sy2dtemp) = self.pyr_display_signals_base(self.wfs,segmSigMaskAll, pistSigMaskAll, 
-                                           title=['segment piston masks', 'segment masks'])
+                                           title=['segment piston masks', 'segment masks'],figsize = figsize)
 
                 
-    def showIMSignalsPrep(self):        
+    def showIMSignalsPrep(self,figsize = (15,5)):        
         self.gmt.reset()
         segment = 6
         # TODO: this looks strange...
@@ -532,19 +534,19 @@ class NGAO(object):
         self.wfs.reset()
         self.wfs.analyze(self.gs)
         ll = self.wfs.get_measurement(out_format='list')
-        (sx_temp,sy_temp) = self.pyr_display_signals_base(self.wfs,*ll)
+        (sx_temp,sy_temp) = self.pyr_display_signals_base(self.wfs,*ll,figsize = figsize)
         
         
-    def showIMSignals(self, segment, mode):
+    def showIMSignals(self, segment, mode,figsize = (15,5)):
         if self.simul_onaxis_AO==True and self.VISU==True:
             this_segment = segment   # from 0 to 6. Central segment: 6
             this_kl = mode
             this_mode = self.n_mode*this_segment+this_kl
             sx = self.D_AO[0:self.wfs.n_sspp,this_mode] / 1e9
             sy = self.D_AO[self.wfs.n_sspp:,this_mode]  / 1e9
-            sx2d, sy2d = self.pyr_display_signals_base(self.wfs,sx,sy)
+            sx2d, sy2d = self.pyr_display_signals_base(self.wfs,sx,sy,figsize = figsize)
             
-    def removeCentralPiston(self):            
+    def removeCentralPiston(self,figsize = (15,5)):            
         if self.simul_onaxis_AO:
             # Remove segment piston:
             if self.remove_seg_piston:
@@ -552,13 +554,13 @@ class NGAO(object):
                 self.D_AO = np.delete(self.D_AO, self.segpist_idx, axis=1) 
                 
                 
-    def doIMsvd(self):
+    def doIMsvd(self,figsize = (15,5)):
         if self.simul_onaxis_AO and self.rec_type=='LS':
             print('Condition number: %f'%np.linalg.cond(self.D_AO))
             self.Uz, self.Sz, self.Vz =np.linalg.svd(self.D_AO)
             if self.VISU:
                 fig, ax = plt.subplots()
-                fig.set_size_inches(self.nseg,5)
+                fig.set_size_inches(figsize)
                 ax.semilogy(self.Sz/np.max(self.Sz), 'o-', )
                 ax.grid()
                 ax.tick_params(labelsize=14)
@@ -566,7 +568,7 @@ class NGAO(object):
                 ax.set_ylabel('normalized singular value', fontsize=14)
                 
                 
-    def showEigenMode(self, this_eigen):
+    def showEigenMode(self, this_eigen,figsize = (15,5)):
         
         if self.simul_onaxis_AO and self.rec_type=='LS' and self.VISU:
             eigenmodevec = np.copy(self.Vz[this_eigen,:])
@@ -580,7 +582,7 @@ class NGAO(object):
             self.gmt.propagate(self.gs)
 
             fig, (ax1,ax2) = plt.subplots(ncols=2)
-            fig.set_size_inches(6,5)
+            fig.set_size_inches(figsize)
             imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation='None',cmap='RdYlBu',origin='lower')
             clb = fig.colorbar(imm, ax=ax1)  #, fraction=0.012, pad=0.03,format="%.1f")
             clb.set_label('nm WF', fontsize=12)
@@ -590,7 +592,7 @@ class NGAO(object):
             plt.show()
 
 
-    def generalizedIMInverse(self):
+    def generalizedIMInverse(self,figsize = (15,5)):
         if self.simul_onaxis_AO and self.rec_type=='LS':
             # select threshold to filter last eigenmode.
             #ao_thr = (Sz/np.max(Sz))[-2:].sum()/2 
@@ -602,7 +604,7 @@ class NGAO(object):
                 plt.imshow(np.log(np.abs(self.R_AO)))
                 plt.colorbar()
 
-    def addRowsOfRemovedModes(self):
+    def addRowsOfRemovedModes(self,figsize = (15,5)):
         if self.simul_onaxis_AO:
             if self.remove_seg_piston:
                 for idx in self.segpist_idx:
@@ -615,7 +617,7 @@ class NGAO(object):
                 self.ntotmodes = self.R_AO.shape[0]
                 
                 
-    def idealPistonSensor(self):
+    def idealPistonSensor(self,figsize = (15,5)):
         if self.simul_onaxis_AO:    
             # idealized SPS initialization
             self.onps = ceo.IdealSegmentPistonSensor(self.D, self.nPx, segment='full')
@@ -630,7 +632,7 @@ class NGAO(object):
             self.KL0_idx = self.n_mode*np.array([0,1,2,3,4,5])
             if self.VISU:
                 fig, ax1 = plt.subplots()
-                fig.set_size_inches(self.nseg,5)
+                fig.set_size_inches(figsize)
                 imm = ax1.pcolor(self.D_M2_PSideal)
                 ax1.grid()
                 fig.colorbar(imm, ax=ax1)#, fraction=0.012) 
@@ -638,7 +640,7 @@ class NGAO(object):
             self.R_M2_PSideal = np.linalg.pinv(self.D_M2_PSideal)
             self.SPP2ndCh_thr = self.gs.wavelength * self.chan2_wvl_fraction
             
-    def nonIdealPistonSensorCalibAndRM(self):
+    def nonIdealPistonSensorCalibAndRM(self,figsize = (15,5)):
         """Initialisation of any of the three sensors considered for the second channel"""
         if self.chan2_sensorType.lower() == PYRAMID_SENSOR:
             print("calibrating the pyramid wavefrontsensor for the second channel" )
@@ -652,7 +654,7 @@ class NGAO(object):
             
             if self.VISU:
                 fig, (ax1,ax2) = plt.subplots(ncols=2)
-                fig.set_size_inches(6,5)
+                fig.set_size_inches(figsize)
                 ax1.imshow( np.sum(self.chan2_wfs.indpup, axis=0, dtype='bool')[extr:-1-extr, extr:-1-extr] )
             
             if self.VISU:
@@ -667,7 +669,7 @@ class NGAO(object):
                                          first_mode=0, last_mode=1)
             if self.VISU:
                 fig, ax1 = plt.subplots()
-                fig.set_size_inches(7,5)
+                fig.set_size_inches(figsize)
                 imm = ax1.pcolor(self.chan2_D2)
                 ax1.grid()
                 fig.colorbar(imm, ax=ax1)#, fraction=0.012) 
@@ -677,7 +679,7 @@ class NGAO(object):
                 sx = self.chan2_D2[0:self.chan2_wfs.n_sspp,this_mode] / 1e9
                 sy = self.chan2_D2[self.chan2_wfs.n_sspp:,this_mode]  / 1e9
             
-                sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,sx,sy)
+                sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,sx,sy,figsize = figsize)
             
             self.chan2_D2m = self.chan2_D2.copy()
             if self.chan2_applySignalMasking:
@@ -693,7 +695,7 @@ class NGAO(object):
                 sx = self.chan2_D2m[0:self.chan2_wfs.n_sspp,this_mode] / 1e9
                 sy = self.chan2_D2m[self.chan2_wfs.n_sspp:,this_mode]  / 1e9
             
-                sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,sx,sy)
+                sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,sx,sy,figsize = figsize)
                 
             self.chan2_D2m = np.delete(self.chan2_D2m,[6],axis = 1)
             self.chan2_R2m = np.linalg.pinv(self.chan2_D2m)
@@ -746,8 +748,8 @@ class NGAO(object):
                                             ,fileName='noTrussGMTMask.fits'
                                             , typeOfArray= 'amplitude')
             
-            self.chan2_interactionMatrix  = np.zeros((self.nseg,self.chan2_nPx**2))
-            for s in range(self.nseg):
+            self.chan2_interactionMatrix  = np.zeros((self.nseg-1,self.chan2_nPx**2))
+            for s in range(self.nseg-1):
                 #set up the wavefront to feed to the propagation
                 self.chan2_gs.reset()
                 self.gmt.reset()
@@ -764,23 +766,38 @@ class NGAO(object):
                     #/!\ this also remove the signal outside the segments!
                     self.chan2_wfs.frame *= gmtMask
             
-            self.chan2_R2m = np.linalg.pinv(self.chan2_interactionMatrix)
+            self.chan2_R2m = np.zeros((self.chan2_nPx**2,self.nseg))
+            self.chan2_R2m[:,:6] = np.linalg.pinv(self.chan2_interactionMatrix)
             
             if self.chan2_gmtCalib:
                 self.chan2_wfs.fitsPupilFile = tmpfitsPupFile
                 self.gmt.project_truss_onaxis = tmpproject_truss_onaxis
             
+        if self.chan2_sensorType.lower()==LIFT:
+            self.gmt.reset()
+            self.chan2_gs.reset()
+            self.gmt.propagate(self.chan2_gs)
+            gmtMask = self.chan2_gs.amplitude.host()
+            self.chan2_wfs.mask = self.chan2_wfs.CEOcompa(gmtMask)
             
+            self.chan2_wfs.R2m = np.zeros((6,6))
+            self.chan2_wfs.R2m[0,1] = 1
+            self.chan2_wfs.R2m[1,0] = 1
+            self.chan2_wfs.R2m[2,5] = 1
+            self.chan2_wfs.R2m[3,4] = 1
+            self.chan2_wfs.R2m[4,3] = 1
+            self.chan2_wfs.R2m[5,2] = 1
+            # self.chan2_wfs.R2m *= 10**-9
             
             
 
             
-    def probe_signal(self, fs, kk):
+    def probe_signal(self, fs, kk,figsize = (15,5)):
         for pp in self.ogtl_probe_params:
             self.ogtl_probe_vec[pp['seg'], pp['mode']] = pp['amp']*np.sin(2*np.pi*pp['freq']/fs*kk)
 
 
-    def optical_gain_cl(self, probes_in,probes_out):    
+    def optical_gain_cl(self, probes_in,probes_out,figsize = (15,5)):    
         probe_in_fitcoef = [np.polyfit(self.ogtl_timevec,this_probe,self.ogtl_detrend_deg) for this_probe in probes_in]
         probe_in_fit = [poly_nomial(self.ogtl_timevec,this_coeff) for this_coeff in probe_in_fitcoef]
         probes_in = np.array([pr-prf for (pr,prf) in zip(probes_in,probe_in_fit)])
@@ -798,7 +815,7 @@ class NGAO(object):
 
         return OG
         
-    def doOTGLsimul(self):
+    def doOTGLsimul(self,figsize = (15,5)):
         if self.ogtl_simul:
             # Warning! hard-code below. It assues the basis used is ASM_fittedKLs_S7OC04184_675kls.ceo
             radord_data = dict(np.load(self.dir_calib+'ASM_fittedKLs_S7OC04184_675kls_radord.npz'))
@@ -839,7 +856,7 @@ class NGAO(object):
 
             if self.VISU:
                 fig, ax1 = plt.subplots()
-                fig.set_size_inches(6,5)
+                fig.set_size_inches(figsize)
                 imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
                 ax1.set_title('probe modes')
                 ax1.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
@@ -853,7 +870,7 @@ class NGAO(object):
         self.varseeing_iter = (self.seeing_max-self.seeing_init)*np.sin(2*np.pi*t/self.vs_T)+ self.seeing_init
         return 0.9759 * 500e-9/(self.varseeing_iter*ceo.constants.ARCSEC2RAD) 
     
-    def simulTurbulence(self):        
+    def simulTurbulence(self,figsize = (15,5)):        
         if self.simul_turb:
             print('       Mean wind speed : %2.1f m/s' % self.meanV)
             print('                  tau0 : %2.2f ms'%(self.tau0*1e3))
@@ -888,11 +905,11 @@ class NGAO(object):
             if self.VISU:
                 ## Visualize reference slope vector in 2D (for a flat WF)
                 ll = self.wfs.get_ref_measurement(out_format='list')
-                (sx_ref_2d,sy_ref_2d) = self.pyr_display_signals_base(self.wfs,*ll)
+                (sx_ref_2d,sy_ref_2d) = self.pyr_display_signals_base(self.wfs,*ll,figsize = figsize)
                 
                 
                 
-    def modalPerfEval(self, this_mode=401):
+    def modalPerfEval(self, this_mode=401,figsize = (15,5)):
         # Segment masks
         self.gmt.reset()
         self.gs.reset()
@@ -945,7 +962,7 @@ class NGAO(object):
                 plt.colorbar()
             
             
-    def showSignalsModeSegAmp(self, this_seg, this_kl, this_amp ):
+    def showSignalsModeSegAmp(self, this_seg, this_kl, this_amp ,figsize = (15,5)):
         if self.VISU:
             self.gmt.reset()
             self.gmt.M2.modes.a[this_seg,this_kl]= this_amp
@@ -956,7 +973,7 @@ class NGAO(object):
             self.wfs.analyze(self.gs)
             extr = (self.wfs.ccd_frame.shape[0]-240)//2  # hard-coded..... cropping the frame to match OCAM2 actual number of pixels
             fig, (ax1,ax2) = plt.subplots(ncols=2)
-            fig.set_size_inches(6,4)
+            fig.set_size_inches(figsize)
             phase = (self.gs.phase.host(units='nm')-self.ph_fda_on).ravel()
             phase1 = np.full(self.nPx**2,np.nan)
             phase1[self.GMTmask] = phase[self.GMTmask]
@@ -973,10 +990,10 @@ class NGAO(object):
             #plt.colorbar()
             sxtemp = self.wfs.get_sx()
             sytemp = self.wfs.get_sy()
-            [sx2dtemp, sy2dtemp] = self.pyr_display_signals_base(self.wfs,sxtemp,sytemp)
+            [sx2dtemp, sy2dtemp] = self.pyr_display_signals_base(self.wfs,sxtemp,sytemp,figsize=figsize)
             
             
-    def islandMode(self, index):
+    def islandMode(self, index,figsize = (15,5)):
         S7mask = np.zeros(self.nPx**2)
         S7mask[self.P[index,:]]=1
         segmask_label, nlabels = ndimage.label(S7mask.reshape((self.nPx,self.nPx)))
@@ -1028,7 +1045,7 @@ class NGAO(object):
 
             if self.VISU:
                 fig, (ax1,ax2) = plt.subplots(ncols=2)
-                fig.set_size_inches(6,5)
+                fig.set_size_inches(figsize)
 
                 imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
                 ax1.set_title('on-axis WF')
@@ -1058,7 +1075,7 @@ class NGAO(object):
 
             if self.VISU:
                 fig, (ax1,ax2) = plt.subplots(ncols=2)
-                fig.set_size_inches(6,5)
+                fig.set_size_inches(figsize)
 
                 imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
                 ax1.set_title('on-axis WF')
@@ -1076,7 +1093,7 @@ class NGAO(object):
                 plt.show()
                 
                 
-    def globalTTModes(self):
+    def globalTTModes(self,figsize = (15,5)):
         vv = np.linspace(-1,1,self.nPx)*(self.D/2)
         [x_ep,y_ep] = np.meshgrid(vv,vv) # rows x cols
 
@@ -1121,7 +1138,7 @@ class NGAO(object):
         self.inv_wfgradmat = np.linalg.inv(wfgradmat)
 
 
-    def phaseAveraging(self):
+    def phaseAveraging(self,figsize = (15,5)):
         if self.do_Phase_integration:
             self.imgs = ceo.Source('H', magnitude=8, zenith=0.,azimuth=0., rays_box_size=self.D, 
                     rays_box_sampling=self.nPx, rays_origin=[0.0,0.0,25])
@@ -1131,7 +1148,7 @@ class NGAO(object):
     #------------------- Complex Amplitude computation.
     #     Inputs: None. It uses current amplitude and phase of gs object
     #     Keywords: FT: if True, returns the FT of the complex amplitude
-    def complex_amplitude(self, FT=False):
+    def complex_amplitude(self, FT=False,figsize = (15,5)):
         A0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
         A0[0:self.nPx,0:self.nPx] = ceo.ascupy(self.gs.amplitude)
         F0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
@@ -1145,14 +1162,14 @@ class NGAO(object):
         
     #-------------------- Short exposure PSF computation.
     #     Input: W_ft -> Fourier Transform of the complex amplitude
-    def psf_se(self, W_ft, shifted=False, norm_factor=1):
+    def psf_se(self, W_ft, shifted=False, norm_factor=1,figsize = (15,5)):
         if shifted==True:
             return cp.fft.fftshift( cp.abs(W_ft)**2 ) / norm_factor
         else:
             return cp.abs(W_ft)**2 / norm_factor
 
     # ------------------ Perfect coronagraph PSF computation
-    def perfect_coro_psf_se(self, shifted=False, norm_factor=1):
+    def perfect_coro_psf_se(self, shifted=False, norm_factor=1,figsize = (15,5)):
         W1_ft = self.complex_amplitude(FT=True)
         SR_se = cp.exp(cp.array(-(self.knumber*self.gs.phaseRms())**2))  # Marechal approximation
         Wc_ft = W1_ft - cp.sqrt(SR_se)*self.Rf
@@ -1163,18 +1180,18 @@ class NGAO(object):
 
 
     #----------------- Computes the image displacement w.r.t to the reference position [in mas]
-    def psf_centroid(self, myPSF, centr_ref):
+    def psf_centroid(self, myPSF, centr_ref,figsize = (15,5)):
         return np.array(ndimage.center_of_mass(myPSF) - centr_ref)*self.fp_pixscale
 
     #------------------ Estimates the SR (intensity at center of image from a normalized PSF)
-    def strehl_ratio(self, myPSF, centr_ref):
+    def strehl_ratio(self, myPSF, centr_ref,figsize = (15,5)):
         return myPSF[tuple(np.round(centr_ref).astype('int'))]
 
-    def sr_and_centroid(self, myPSF):
+    def sr_and_centroid(self, myPSF,figsize = (15,5)):
         return self.strehl_ratio(myPSF), self.psf_centroid(myPSF)
 
     # ----------------- Estimate intensity at given separation
-    def intensity_query(self, PSFprof, Rfvec, sep_query):
+    def intensity_query(self, PSFprof, Rfvec, sep_query,figsize = (15,5)):
         ss = np.where(Rfvec > sep_query)[0][0]  # index of first distance value larger than sep_query
         int_req = PSFprof[ss] + \
             (PSFprof[ss]-PSFprof[ss-1]) / (Rfvec[ss]-Rfvec[ss-1]) * (sep_query-Rfvec[ss])
@@ -1182,9 +1199,9 @@ class NGAO(object):
     
     #------------------- Funcdtion to show PSFs side by side
     #   im_display_size: +/- mas from center
-    def show_two_psfs(self, myPSF1, myPSF2, im_display_size=150, log=True, clim=None):
+    def show_two_psfs(self, myPSF1, myPSF2, im_display_size=150, log=True, clim=None,figsize = (15,5)):
         fig, (ax1,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(6,5)
+        fig.set_size_inches(figsize)
 
         im_range_mas = np.array([-im_display_size, im_display_size])
         im_range_pix = np.rint(im_range_mas/self.fp_pixscale + self.nPx*self.npad/2).astype(int)
@@ -1217,10 +1234,10 @@ class NGAO(object):
 
     #------------------- Function to show PSF
     #   im_display_size: +/- mas from center
-    def show_psf(self, myPSF, im_display_size=150, clim=[-8,0], fig=None,ax1=None):
+    def show_psf(self, myPSF, im_display_size=150, clim=[-8,0], fig=None,ax1=None,figsize = (15,5)):
         if ax1==None:
             fig, ax1 = plt.subplots()
-            fig.set_size_inches(7,5)
+            fig.set_size_inches(figsize)
 
         im_range_mas = np.array([-im_display_size, im_display_size])
         im_range_pix = np.rint(im_range_mas/self.fp_pixscale + self.nPx*self.npad/2).astype(int)
@@ -1234,9 +1251,9 @@ class NGAO(object):
         
     #------------------- Function to show PSF and radial profile
     #   im_display_size: +/- mas from center
-    def show_psf_and_profile(self, myPSF, myProf, im_display_size=150, clim=[-8,0]):
+    def show_psf_and_profile(self, myPSF, myProf, im_display_size=150, clim=[-8,0],figsize = (15,5)):
         fig, (ax1,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(6,5)
+        fig.set_size_inches(figsize)
         self.show_psf(myPSF, im_display_size=im_display_size, clim=clim, fig=fig,ax1=ax1)
         ax2.loglog(self.Rf.ravel(), myPSF.ravel(), '.')
         #ax2.hold('on')
@@ -1249,7 +1266,7 @@ class NGAO(object):
         ax2.set_ylabel('normalized intensity') 
         plt.show()
         
-    def showDL_PSF(self):
+    def showDL_PSF(self,figsize = (15,5)):
         ## init psf visualization data
         self.gs.reset()
         self.gmt.reset()
@@ -1273,65 +1290,72 @@ class NGAO(object):
             self.show_psf_and_profile(self.PSF0.get(), self.PSF0prof, im_display_size=1000)
             print('Strehl ratio @ %.1f um of diff-limited PSF: %.2f'%(self.lim*1e6,np.max(self.PSF0)))
     
-    def chan2_sourceSetup(self):
-        """initialisation of the light source wavefront for the second channel"""
+    def chan2_pistonRetrival(self,sensor_measurement):
+        """use the measurement verctor(s) out of any sensor to produce a command vector for the closed loop
+        input:
+            sensor_measurement: a list of single dimension array or a single dimention array
+            any arrays should have self.nseg elements
+            
+        output:
+            command_vector: a single dimension array of self.nseg elements"""
         
+        command_vector = np.array([np.sign(a) if np.abs(a) > 10*10**-9 else 0 
+                                   for a in self.chan2_piston_estimate])*self.gs.wavelength*0.8
         
-        
-        
+        return command_vector
     
     
-    def runAll(self):
-        self.M2_KL_modes()
-        self.propagatePyramid()
-        self.KL_modes_exit_pupil()
-        self.pyr_display_signals()
-        self.getOrCalibrateIM()
-        self.extractIMRequestedModes()
-        self.applySignalMasks()
-        self.showIMSignalsPrep()
-        self.showIMSignals(6, 100)
-        self.showIMSignals(0, 0)
-        self.removeCentralPiston()
-        self.doIMsvd()
-        self.showEigenMode(202)
-        self.generalizedIMInverse()
-        self.addRowsOfRemovedModes()
-        self.idealPistonSensor()
-        self.nonIdealPistonSensorCalibAndRM()
-        self.doOTGLsimul()
-        self.simulTurbulence()
-        self.modalPerfEval()
-        self.showSignalsModeSegAmp(6, 20, -25e-9)
-        self.islandMode(6)
-        self.globalTTModes()
-        self.phaseAveraging()
-        self.showDL_PSF()
-        self.closedLoopSimul()
+    def runAll(self,figsize = (15,5)):
+        self.M2_KL_modes(figsize = figsize)
+        self.propagatePyramid(figsize = figsize)
+        self.KL_modes_exit_pupil(figsize = figsize)
+        self.pyr_display_signals(figsize = figsize)
+        self.getOrCalibrateIM(figsize = figsize)
+        self.extractIMRequestedModes(figsize = figsize)
+        self.applySignalMasks(figsize = figsize)
+        self.showIMSignalsPrep(figsize = figsize)
+        self.showIMSignals(6, 100,figsize = figsize)
+        self.showIMSignals(0, 0,figsize = figsize)
+        self.removeCentralPiston(figsize = figsize)
+        self.doIMsvd(figsize = figsize)
+        self.showEigenMode(202,figsize = figsize)
+        self.generalizedIMInverse(figsize = figsize)
+        self.addRowsOfRemovedModes(figsize = figsize)
+        self.idealPistonSensor(figsize = figsize)
+        self.nonIdealPistonSensorCalibAndRM(figsize = figsize)
+        self.doOTGLsimul(figsize = figsize)
+        self.simulTurbulence(figsize = figsize)
+        self.modalPerfEval(figsize = figsize)
+        self.showSignalsModeSegAmp(6, 20, -25e-9,figsize = figsize)
+        self.islandMode(6,figsize = figsize)
+        self.globalTTModes(figsize = figsize)
+        self.phaseAveraging(figsize = figsize)
+        self.showDL_PSF(figsize = figsize)
+        self.closedLoopSimul(figsize = figsize)
         
-    def closedLoopInit(self):
+    def closedLoopInit(self,figsize = (15,5)):
         """Run the bare minimum for the closed loop to be able to run"""
-        self.M2_KL_modes()
-        self.propagatePyramid()
-        self.getOrCalibrateIM()
-        self.extractIMRequestedModes()
-        self.applySignalMasks()
-        self.showIMSignalsPrep()
-        self.removeCentralPiston()
-        self.doIMsv
-        self.generalizedIMInverse()
-        self.addRowsOfRemovedModes()
-        self.idealPistonSensor()
-        self.nonIdealPistonSensorCalibAndRM()
-        self.doOTGLsimul()
-        self.simulTurbulence()
-        self.modalPerfEval()
-        self.globalTTModes()
-        self.phaseAveraging()
-        self.closedLoopSimul()
+        self.M2_KL_modes(figsize = figsize)
+        self.propagatePyramid(figsize = figsize)
+        self.getOrCalibrateIM(figsize = figsize)
+        self.extractIMRequestedModes(figsize = figsize)
+        self.applySignalMasks(figsize = figsize)
+        self.showIMSignalsPrep(figsize = figsize)
+        self.removeCentralPiston(figsize = figsize)
+        self.doIMsvd(figsize = figsize)
+        self.generalizedIMInverse(figsize = figsize)
+        self.addRowsOfRemovedModes(figsize = figsize)
+        self.idealPistonSensor(figsize = figsize)
+        self.nonIdealPistonSensorCalibAndRM(figsize = figsize)
+        self.doOTGLsimul(figsize = figsize)
+        self.simulTurbulence(figsize = figsize)
+        self.modalPerfEval(figsize = figsize)
+        self.globalTTModes(figsize = figsize)
+        self.phaseAveraging(figsize = figsize)
+        self.closedLoopSimul(figsize = figsize)
 
             
-    def closedLoopSimul(self,fisize = (12,5),dbg = False):
+    def closedLoopSimul(self,figsize = (15,5),dbg = False):
 #         self.propagatePyramid()
 #         self.getOrCalibrateIM()
 #         self.simulTurbulence()
@@ -1366,7 +1390,7 @@ class NGAO(object):
                 self.gs.reset()
                 self.gmt.propagate(self.gs)
                 fig, ax1 = plt.subplots()
-                fig.set_size_inches(6,4)
+                fig.set_size_inches(figsize)
                 InitScr = self.gs.phase.host(units='nm')-self.ph_fda_on
 
                 imm = ax1.imshow(InitScr, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
@@ -1414,7 +1438,7 @@ class NGAO(object):
             self.gs.reset()
             self.gmt.propagate(self.gs)
             fig, ax1 = plt.subplots()
-            fig.set_size_inches(6,4)
+            fig.set_size_inches(figsize)
             imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
             ax1.set_title('on-axis WF')
             ax1.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
@@ -1577,7 +1601,7 @@ class NGAO(object):
         for jj in range(self.totSimulIter):
             self.tid.tic()
             self.gs.reset()
-            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                 self.chan2_gs.reset()
 
             #----- Update Turbulence --------------------------------------------
@@ -1588,7 +1612,7 @@ class NGAO(object):
                     if self.save_telemetry:
                         self.r0_iter[jj] = self.atm.r0
                 self.atm.ray_tracing(self.gs, self.pixelSize,self.nPx,self.pixelSize,self.nPx, self.atm_t0+(jj*self.Tsim))
-                if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                     self.atm.ray_tracing(self.chan2_gs, self.chan2_pixelSize,self.chan2_nPx,self.chan2_pixelSize,self.chan2_nPx, self.atm_t0+(jj*self.Tsim))
 
                 if self.do_Phase_integration:
@@ -1637,7 +1661,7 @@ class NGAO(object):
 
             #----- On-axis WFS measurement ---------------------------------------------------
             self.gmt.propagate(self.gs)
-            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+            if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                 self.gmt.propagate(self.chan2_gs)
 
             if self.do_Phase_integration:
@@ -1727,7 +1751,7 @@ class NGAO(object):
                         # print('comm_buffer when jj == self.SPP2ndChInit')
                         # print(comm_buffer)
                     
-                    if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                    if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                         self.chan2_wfs.reset()
                         self.chan2_wfs.propagate(self.chan2_gs)
 
@@ -1763,7 +1787,7 @@ class NGAO(object):
                             self.chan2_piston_estimate = self.chan2_R2m @ chan2_meas
                             self.chan2_piston_estimate -= self.chan2_piston_estimate[6]
                             
-                            self.chan2_forCorrection = np.array([np.sign(a) if np.abs(a) > 10*10**-9 else 0 for a in self.chan2_piston_estimate])*self.gs.wavelength*0.8
+                            self.chan2_forCorrection = self.chan2_pistonRetrival(self.chan2_piston_estimate)
                             # self.chan2_forCorrection = np.sign(self.chan2_piston_estimate)*-1*self.gs.wavelength
                             
                             self.chan2_pistEstList.append([jj,self.chan2_piston_estimate])
@@ -1772,7 +1796,8 @@ class NGAO(object):
                                 
                                 sx2d, sy2d = self.pyr_display_signals_base(self.chan2_wfs,
                                                                             *self.chan2_wfs.get_measurement(out_format='list' ),
-                                                                            title = ['sx measured by channel 2', 'sy measured by channel 2' ])
+                                                                            title = ['sx measured by channel 2', 'sy measured by channel 2' ],
+                                                                            figsize=figsize)
                                 self.chan2_debugframe.append([sx2d,sy2d])
                                 plt.figure()
                                 plt.imshow(self.chan2_gs.phase.host(),origin = 'lower')
@@ -1799,10 +1824,7 @@ class NGAO(object):
                             self.chan2_wfs.process(self.chan2_exposure_time)
                             self.chan2_piston_estimate = self.chan2_wfs.frame.reshape(-1) @ self.chan2_R2m
                             self.chan2_piston_estimate -= self.chan2_piston_estimate[6]
-                            self.chan2_forCorrection = np.array([np.sign(a) 
-                                                                 if np.abs(a) > 10*10**-9 else 0 
-                                                                 for a in self.chan2_piston_estimate])\
-                                                                 *self.gs.wavelength*0.8
+                            self.chan2_forCorrection = self.chan2_pistonRetrival(self.chan2_piston_estimate)
                             comm_buffer[self.KL0_idx,:] -= cp.asarray(self.chan2_forCorrection[0:6,np.newaxis])
                             
                             self.chan2_pistEstList.append([jj,self.chan2_piston_estimate])
@@ -1812,13 +1834,25 @@ class NGAO(object):
                                 
                                 self.chan2_debugframe.append(self.chan2_wfs.frame)
                             self.chan2_wfs.reset()
+                        
+                        if self.chan2_sensorType==LIFT:
+                            #TODO: camera noise
+                            self.chan2_wfs.cameraNoise(self.chan2_RONval,0)
+                            currentPhaseEstimate, A_ML = self.chan2_wfs.phaseEstimation(self.chan2_wfs.frame, False, 1e-6, 1e-5)
                             
+                            self.chan2_piston_estimate = A_ML[:6] @ self.chan2_wfs.R2m
+                            self.chan2_piston_estimate *= self.chan2_gs.wavelength/(2*np.pi)
+                            self.chan2_pistEstList.append([jj,self.chan2_piston_estimate])
+                            self.chan2_forCorrection = self.chan2_pistonRetrival(self.chan2_piston_estimate)
+                            comm_buffer[self.KL0_idx,:] -= cp.asarray(self.chan2_forCorrection[0:6,np.newaxis])
+
+                            self.chan2_wfs.reset()
                             
                         self.SPP2ndCh_count=0
                     else:
                         if self.chan2_sensorType.lower() == 'idealpistonsensor':
                             self.onps.propagate(self.gs)
-                        if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                        if self.chan2_sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                             self.chan2_wfs.propagate(self.chan2_gs)
                             
                         self.SPP2ndCh_count+=1
@@ -1899,7 +1933,7 @@ class NGAO(object):
                     PSFcse = self.perfect_coro_psf_se(shifted=True, norm_factor=self.norm_pup)
                 else:
                     PSFse, PSFcse = self.perfect_coro_psf_se(shifted=True, norm_factor=self.norm_pup, do_wo_coro_too=True)
-
+                    
                 if jj == self.totSimulInit:
                     print('\nStart accumulating coro PSFs\n')
                     PSFcle = PSFcse.copy()
@@ -1909,16 +1943,16 @@ class NGAO(object):
                     PSFcle += PSFcse
                     if self.do_wo_coro_too:
                         PSFle += PSFse
-
+                        
             elif self.do_psf_le:
                 PSFse  = self.psf_se(self.complex_amplitude(FT=True), shifted=True, norm_factor=self.norm_pup)
-
+                
                 if jj == self.totSimulInit:
                     print('\nStart accumulating PSFs\n')
                     PSFle = PSFse.copy()
                 elif jj > self.totSimulInit:
                     PSFle += PSFse
-
+                    
             if self.save_psfse_decimated:
                 if save_psf_count == save_psf_niter-1:
                     psftemp = PSFse[psf_range_pix[0]:psf_range_pix[1],psf_range_pix[0]:psf_range_pix[1]]
@@ -1929,24 +1963,24 @@ class NGAO(object):
                     save_psf_count = 0
                 else:
                     save_psf_count+=1
-
+                    
             if self.save_telemetry and self.do_psf_le:
                 srse, centrse = self.sr_and_centroid(PSFse.get()) 
                 sr_iter[jj] = srse #self.strehl_ratio(PSFse.get())
                 im_centr_iter[:,jj] = centrse #self.psf_centroid(PSFse.get())
-
+                
             self.tid.toc()
             sys.stdout.write("\r iter: %d/%d, ET: %.1f s, on-axis WF RMS [nm]: %.1f"%(jj, self.totSimulIter, 
                                                                                       self.tid.elapsedTime*1e-3, self.gs.phaseRms()*1e9))
             sys.stdout.flush() 
-
+            
             #---------- End of closed-loop iterations!!!
-
+            
         #-- show final on-axis residual map
         if self.VISU:
             fig, ax1 = plt.subplots()
-            fig.set_size_inches(8,5)
-
+            fig.set_size_inches(figsize)
+            
             imm = ax1.imshow(self.gs.phase.host(units='nm')-self.ph_fda_on, interpolation=None,cmap=plt.cm.gist_earth_r, origin='lower')#, vmin=-25, vmax=25)
             ax1.set_title('on-axis WF')
             ax1.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
@@ -1969,11 +2003,11 @@ class NGAO(object):
             PSFcleprof = ndimage.mean(PSFcle.get(), labels=self.Rflabel, index=self.Rfidx)
             inten_query = self.intensity_query(PSFcleprof, self.Rfvec, self.sep_req)
             print("Coronagraphic PSF contrast at %.1f mas: %.2e"%(self.sep_req,inten_query))
-
+            
             if self.do_wo_coro_too:
                 PSFleprof = ndimage.mean(PSFle.get(), labels=self.Rflabel, index=self.Rfidx)
                 print("Long-exposure PSF Strehl Ratio @ %1.2f um: %1.3f"%(self.lim*1e6,self.strehl_ratio(PSFle)))
-
+                
         elif self.do_psf_le:
             PSFleprof = ndimage.mean(PSFle.get(), labels=self.Rflabel, index=self.Rfidx)
             srle = self.strehl_ratio(PSFle.get())
@@ -1998,7 +2032,7 @@ class NGAO(object):
         if self.coro_psf and self.VISU:
             if self.do_wo_coro_too:
                 fig, ax2 = plt.subplots()
-                fig.set_size_inches(10,5)
+                fig.set_size_inches( figsize)
                 ax2.loglog(self.Rfvec, PSFleprof, 'b', linewidth=3, label='w/o PC')
                 ax2.loglog(self.Rfvec, PSFcleprof, 'r', linewidth=3, label=' w/ PC')
                 ax2.plot(np.array([self.sep_req, self.sep_req]), np.array([1e-10,1]), 'k--', linewidth=1.5)
@@ -2200,7 +2234,7 @@ class NGAO(object):
                 self.PSFle = cp.array(data['PSFle'])
 
     
-    def analyseSimulation(self):
+    def analyseSimulation(self,figsize = (15,5)):
 
         
         self.totSimulInit =500
@@ -2230,7 +2264,7 @@ class NGAO(object):
 
         # WFE and SPP RMS  
         fig, (ax1,ax2) = plt.subplots(num = 'WFE and SPP RMS', ncols=2)
-        fig.set_size_inches(6,5)
+        fig.set_size_inches(figsize)
 
         #### on-axis WFE vs. iteration number
         ax1.plot(self.wfe_gs_iter*1e9)
@@ -2268,7 +2302,7 @@ class NGAO(object):
         diff_spp_iter2 =self.crazy_spp_iter - self.crazy_spp_iter[6,:]
         #### on-axis segment WFE vs. iteration number
         fig, (ax1,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(6,5)
+        fig.set_size_inches(figsize)
         ax1.plot(timeVec,self.seg_wfe_gs_iter.T*1e9)#, '-+')
         ax1.grid()
         ax1.set_xlabel('elapsed time [s]', fontsize=15)
@@ -2328,7 +2362,7 @@ class NGAO(object):
 
         # Optical Gain
         fig, (ax,ax2) = plt.subplots(ncols=2)
-        fig.set_size_inches(6,4)
+        fig.set_size_inches(figsize)
         ax.plot(self.ogtl_ticks, np.array(self.ogtl_ogeff_probes_iter), drawstyle='steps-post')
         label = ['KL#%d'%kk['mode'] for kk in self.ogtl_probe_params]
         #ax.set_xticks(OGTL_ticks[1:-1:4])
