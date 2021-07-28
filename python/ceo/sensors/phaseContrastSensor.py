@@ -234,7 +234,7 @@ if __name__=='__main__':
     M2_modes_set = u"ASM_fittedKLs_doubleDiag"
     expTimeMs = 0.150
     
-    nPx = 128
+    nPx = 920
     
     #---- Telescope parameters
     D = 25.5                # [m] Diameter of simulated square (slightly larger than GMT diameter) 
@@ -289,167 +289,167 @@ if __name__=='__main__':
     fileName = zelda.poppyFits(gmtMask,'GMTpupil.fits', 'transmision')
     
     #does a frame without piston with mask
-    toto = zelda.propagate(gs)
-    plt.figure(2)
-    plt.clf()
-    plt.imshow(zelda.frame*np.sum(gmtMask))
+    # toto = zelda.propagate(gs)
+    # plt.figure(2)
+    # plt.clf()
+    # plt.imshow(zelda.frame*np.sum(gmtMask))
     
-    #Now apply a piston to one segment and do the phase contrast image of this:
-    gmt.reset()
-    gs.reset()
-    zelda.reset()
-    gmt.M2.modes.a[0,0] = 200*10**-9
-    gmt.M2.modes.update()
-    gmt.propagate(gs)
+    # #Now apply a piston to one segment and do the phase contrast image of this:
+    # gmt.reset()
+    # gs.reset()
+    # zelda.reset()
+    # gmt.M2.modes.a[0,0] = 200*10**-9
+    # gmt.M2.modes.update()
+    # gmt.propagate(gs)
     
-    #calculate a frame with the current phase contained in gs
-    zelda.propagate(gs)
+    # #calculate a frame with the current phase contained in gs
+    # zelda.propagate(gs)
     
-    plt.figure(3)
-    plt.clf()
-    plt.imshow(zelda.frame)
+    # plt.figure(3)
+    # plt.clf()
+    # plt.imshow(zelda.frame)
     
-    #with the following we create the reference frame for later normalisation of picture.
-    #first we need a flat wavefront
-    gmt.reset()
-    gs.reset()
-    zelda.reset()
-    gmt.propagate(gs)
+    # #with the following we create the reference frame for later normalisation of picture.
+    # #first we need a flat wavefront
+    # gmt.reset()
+    # gs.reset()
+    # zelda.reset()
+    # gmt.propagate(gs)
     
-    #now we feed the wavefront to the object
-    zelda.set_reference_image(gs)
-    plt.figure(4)
-    plt.clf()
-    plt.imshow(zelda.referenceFrame)
-    plt.title("reference image")
+    # #now we feed the wavefront to the object
+    # zelda.set_reference_image(gs)
+    # plt.figure(4)
+    # plt.clf()
+    # plt.imshow(zelda.referenceFrame)
+    # plt.title("reference image")
     
-    #next is the normalisation function, at this point you should already have created 
-    #at least the reference frame
-    #first we want to test with the flat wavefront
+    # #next is the normalisation function, at this point you should already have created 
+    # #at least the reference frame
+    # #first we want to test with the flat wavefront
     
-    gmt.reset()
-    gs.reset()
-    zelda.reset()
+    # gmt.reset()
+    # gs.reset()
+    # zelda.reset()
     
-    for i in range(int(expTimeMs*10**3)):
-        gs.reset()
-        gmt.propagate(gs)
-        zelda.propagate(gs)
+    # for i in range(int(expTimeMs*10**3)):
+    #     gs.reset()
+    #     gmt.propagate(gs)
+    #     zelda.propagate(gs)
     
-    zelda.process(expTimeMs)
-    plt.figure(5)
-    plt.clf()
-    plt.imshow(zelda.frame)
-    plt.colorbar()
-    plt.title("this image should be full of zeros")
+    # zelda.process(expTimeMs)
+    # plt.figure(5)
+    # plt.clf()
+    # plt.imshow(zelda.frame)
+    # plt.colorbar()
+    # plt.title("this image should be full of zeros")
     
-    #now repeat this with a piston on one segment
-    gmt.reset()
-    gs.reset()
-    zelda.reset()
-    gmt.M2.modes.a[0,0] = 200*10**-9
-    gmt.M2.modes.update()
+    # #now repeat this with a piston on one segment
+    # gmt.reset()
+    # gs.reset()
+    # zelda.reset()
+    # gmt.M2.modes.a[0,0] = 200*10**-9
+    # gmt.M2.modes.update()
     
-    for i in range(int(expTimeMs*10**3)):
-        gs.reset()
-        gmt.propagate(gs)
-        #calculate a frame with the latest frame and add it to itself
-        zelda.propagate(gs)
+    # for i in range(int(expTimeMs*10**3)):
+    #     gs.reset()
+    #     gmt.propagate(gs)
+    #     #calculate a frame with the latest frame and add it to itself
+    #     zelda.propagate(gs)
     
-    zelda.process(expTimeMs)
+    # zelda.process(expTimeMs)
     
-    plt.figure(6)
-    plt.clf()
-    plt.imshow(zelda.frame)
+    # plt.figure(6)
+    # plt.clf()
+    # plt.imshow(zelda.frame)
     
-    # next we create the reconstruction matrix accoring to GMT standards
-    
-    if gmtStandardIM:
-        tmpfitsPupFile = zelda.fitsPupilFile
-        gmt.project_truss_onaxis = False
-        gs.reset()
-        gmt.reset()
-        gmt.propagate(gs)
-        
-        zelda.poppyFits(gs.amplitude.host() \
-                                    ,fileName='noTrussGMTMask.fits', typeOfArray= 'amplitude')
-    
-    interactionMatrix  = np.zeros((nseg-1,nPx**2))
-    for s in range(nseg-1):
-        #set up the wavefront to feed to the propagation
-        gs.reset()
-        gmt.reset()
-        zelda.reset()
-        gmt.M2.modes.a[s,0] = strokes
-        gmt.M2.modes.update()
-        gmt.propagate(gs)
-        
-        # feed the wavefront to the propagate method
-        zelda.propagate(gs)
-        
-
-        zelda.process(10**-3)
-        print(np.mean(zelda.frame[gmtMask.astype(bool)]))
-        interactionMatrix[s] = zelda.frame.reshape(-1)/(strokes)
-        if gmtStandardIM:#if we removed it replace the truss on the images
-            zelda.frame *= gmtMask
-    
-    plt.figure(7)
-    plt.clf()
-    fig,axs = plt.subplots(num=7, ncols=3,nrows=3)
-    for i in range(interactionMatrix.shape[0]):
-        axs[i//3,i%3].imshow(interactionMatrix[i].reshape(gmtMask.shape))
-    reconstructionMatrix = np.zeros((nPx**2,nseg))
-    reconstructionMatrix[:,:6] = np.linalg.pinv(interactionMatrix)
+    # # next we create the reconstruction matrix accoring to GMT standards
     
     # if gmtStandardIM:
-    #     zelda.fitsPupilFile = tmpfitsPupFile
-    #     gmt.project_truss_onaxis = True
-    
-    
-    # #next we generate a random piston on a random segment and calculate the reconstructed piston
-    # randSeg = np.random.randint(0,7)
-    randSeg = 1
-    randpist = 150*10**-9
-    # randpist = (np.random.rand()-0.25)*750*10**-9/2
-    print("segment {} has {} nm piston".format(randSeg,randpist*10**9))
-    
-    gmt.reset()
-    gs.reset()
-    zelda.reset()
-    gmt.M2.modes.a[randSeg,0] = randpist
-    gmt.M2.modes.update()
-    gmt.propagate(gs)
-    zelda.propagate(gs)
-    
-    zelda.process(10**-3)
-    reconstructionVector =  zelda.frame.reshape(-1) @ reconstructionMatrix 
-    reconstructionVector -= reconstructionVector[6]
-    print(reconstructionVector)
-    
-    #lets do a sweep for the fun of it
-    pist2apply = np.arange(-3*715,3*716,715/8)*10**-9
-    randSeg = 5
-    res = []
-    for p in pist2apply:
-        gmt.reset()
-        gs.reset()
-        zelda.reset()
-        gmt.M2.modes.a[randSeg,0] = p
-        gmt.M2.modes.update()
-        gmt.propagate(gs)
+    #     tmpfitsPupFile = zelda.fitsPupilFile
+    #     gmt.project_truss_onaxis = False
+    #     gs.reset()
+    #     gmt.reset()
+    #     gmt.propagate(gs)
         
-        zelda.propagate(gs)
-        zelda.process(10**-3)
-        reconstructionVector = zelda.frame.reshape(-1) @ reconstructionMatrix
-        reconstructionVector -= reconstructionVector[6]
-        res.append(reconstructionVector)
+    #     zelda.poppyFits(gs.amplitude.host() \
+    #                                 ,fileName='noTrussGMTMask.fits', typeOfArray= 'amplitude')
+    
+    # interactionMatrix  = np.zeros((nseg-1,nPx**2))
+    # for s in range(nseg-1):
+    #     #set up the wavefront to feed to the propagation
+    #     gs.reset()
+    #     gmt.reset()
+    #     zelda.reset()
+    #     gmt.M2.modes.a[s,0] = strokes
+    #     gmt.M2.modes.update()
+    #     gmt.propagate(gs)
         
-    # res = np.array(res)
-    # and display how the result went
-    plt.figure(8)
-    plt.clf()
-    plt.plot(pist2apply,res,'+-')
+    #     # feed the wavefront to the propagate method
+    #     zelda.propagate(gs)
+        
+
+    #     zelda.process(10**-3)
+    #     print(np.mean(zelda.frame[gmtMask.astype(bool)]))
+    #     interactionMatrix[s] = zelda.frame.reshape(-1)/(strokes)
+    #     if gmtStandardIM:#if we removed it replace the truss on the images
+    #         zelda.frame *= gmtMask
+    
+    # plt.figure(7)
+    # plt.clf()
+    # fig,axs = plt.subplots(num=7, ncols=3,nrows=3)
+    # for i in range(interactionMatrix.shape[0]):
+    #     axs[i//3,i%3].imshow(interactionMatrix[i].reshape(gmtMask.shape))
+    # reconstructionMatrix = np.zeros((nPx**2,nseg))
+    # reconstructionMatrix[:,:6] = np.linalg.pinv(interactionMatrix)
+    
+    # # if gmtStandardIM:
+    # #     zelda.fitsPupilFile = tmpfitsPupFile
+    # #     gmt.project_truss_onaxis = True
+    
+    
+    # # #next we generate a random piston on a random segment and calculate the reconstructed piston
+    # # randSeg = np.random.randint(0,7)
+    # randSeg = 1
+    # randpist = 150*10**-9
+    # # randpist = (np.random.rand()-0.25)*750*10**-9/2
+    # print("segment {} has {} nm piston".format(randSeg,randpist*10**9))
+    
+    # gmt.reset()
+    # gs.reset()
+    # zelda.reset()
+    # gmt.M2.modes.a[randSeg,0] = randpist
+    # gmt.M2.modes.update()
+    # gmt.propagate(gs)
+    # zelda.propagate(gs)
+    
+    # zelda.process(10**-3)
+    # reconstructionVector =  zelda.frame.reshape(-1) @ reconstructionMatrix 
+    # reconstructionVector -= reconstructionVector[6]
+    # print(reconstructionVector)
+    
+    # #lets do a sweep for the fun of it
+    # pist2apply = np.arange(-3*715,3*716,715/8)*10**-9
+    # randSeg = 5
+    # res = []
+    # for p in pist2apply:
+    #     gmt.reset()
+    #     gs.reset()
+    #     zelda.reset()
+    #     gmt.M2.modes.a[randSeg,0] = p
+    #     gmt.M2.modes.update()
+    #     gmt.propagate(gs)
+        
+    #     zelda.propagate(gs)
+    #     zelda.process(10**-3)
+    #     reconstructionVector = zelda.frame.reshape(-1) @ reconstructionMatrix
+    #     reconstructionVector -= reconstructionVector[6]
+    #     res.append(reconstructionVector)
+        
+    # # res = np.array(res)
+    # # and display how the result went
+    # plt.figure(8)
+    # plt.clf()
+    # plt.plot(pist2apply,res,'+-')
     
     # # test the camera noise
     # gmt.reset()

@@ -33,10 +33,11 @@ from sympy.parsing.sympy_parser import parse_expr
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import ceo
-from LIFTFolder.LIFTCode import *
-# import LIFT.LIFT.LIFT as baseLIFT
+from lift import *
+import time
 
-class LiftCEO(LIFTBase):
+
+class LiftCEO(LIFT):
     
     
     
@@ -45,7 +46,7 @@ class LiftCEO(LIFTBase):
         initialise the basic parameters and array needed
         """
         super().__init__( path = path, parametersFile = parametersFile)
-        # self.gridSize = nPix
+        self.nPix = self.gridSize 
         # self.mask = self.CEOcompa(pupilMask)
         # self.mask = pupilMask.copy()
         
@@ -126,7 +127,7 @@ if __name__=='__main__':
     M2_modes_set = u"ASM_fittedKLs_doubleDiag"
     expTimeMs = 150
     
-    nPx = 128
+    nPx = 256
     
     #---- Telescope parameters
     D = 25.5                # [m] Diameter of simulated square (slightly larger than GMT diameter) 
@@ -161,8 +162,8 @@ if __name__=='__main__':
     gmt.project_truss_onaxis = project_truss_onaxis
     
     #lift is initialised from it's own parameter file currently stored here:
-    path2liftParam = "/home/alcheffot/CEO/python/ceo/sensors/LIFTFolder/"
-    liftParamFileName = "params"
+    path2liftParam = "/home/alcheffot/CEO/"
+    liftParamFileName = "paramsLIFT"
     
     lift = LiftCEO(path2liftParam,liftParamFileName)
     
@@ -204,41 +205,70 @@ if __name__=='__main__':
     
     #lets try a single segment at a time
     
-    # stroke = 150*10**-9
-    # strokes = np.linspace(-1.5*715,1.5*715,11)*10**-9
-    # # strokes = [150*10**-9]
-    # res = []
-    # inputPhase = []
-    # for p in strokes:
-    #     gmt.reset()
-    #     gs.reset()
-    #     lift.reset()
-    #     gmt.M2.modes.a[1,0] = p
-    #     gmt.M2.modes.update()
-    #     gmt.propagate(gs)
-    #     # inputPhase.append(lift.propagate(gs))
-    #     lift.propagate(gs)
-        
-    #     currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
-    #     print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
-    #     res.append(A_ML[:6]*lift.lambdaValue*10**-3/(2*np.pi))
+    stroke = 150*10**-9
+    strokes = np.linspace(-1.5*715,1.5*715,21)*10**-9
+    # strokes = [150*10**-9]
+    res = []
+    resall = []
+    inputPhase = []
     
+    R2m = np.zeros((6,6))
+    R2m[0,1] = 1
+    R2m[1,0] = 1
+    R2m[2,5] = 1
+    R2m[3,4] = 1
+    R2m[4,3] = 1
+    R2m[5,2] = 1
+    
+    for s in range(7):
+        res = []
+        for p in strokes:
+            gmt.reset()
+            gs.reset()
+            lift.reset()
+            gmt.M2.modes.a[s,0] = p
+            gmt.M2.modes.update()
+            gmt.propagate(gs)
+            # inputPhase.append(lift.propagate(gs))
+            lift.propagate(gs)
+            
+            currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+            A_ML = A_ML[:6]@R2m
+            # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
+            res.append(A_ML*lift.lambdaValue*10**-3/(2*np.pi))
+        resall.append(res)
     
     # plt.figure(4)
     # plt.clf()
     # plt.imshow(lift.frame)
     # plt.tight_layout()
-    # plt.figure(5)
-    # plt.clf()
-    # plt.plot(strokes*10**6,res,'+-' )
-    # plt.ylabel("retrieved piston in $\mu$m")
-    # plt.xlabel("true piston applied in $\mu$m")
-    # plt.tight_layout()
     
+    
+    
+    plt.figure(5)
+    plt.clf()
+    plt.plot(strokes*10**6,res,'+-' )
+    plt.ylabel("retrieved piston in $\mu$m")
+    plt.xlabel("true piston applied in $\mu$m")
+    plt.tight_layout()
+    
+    resall = np.array(resall)
+    resall = np.moveaxis(resall,1,0)
+    plt.figure(4)
+    plt.clf()
+    fig,axs = plt.subplots(num = 4, nrows = 3, ncols = 3, sharex=True, sharey=True)
+    for s in range(7):
+        axs[s//3,s%3].plot(strokes*10**6,resall[:,s,:])
+        axs[s//3,s%3].set_title('segment {}'.format(s))
+    fig.legend(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6' ],loc="lower right" )
+    
+    fig.text(0.5, 0.04, 'true Piston in $\mu$m', ha='center')
+    fig.text(0.04, 0.5, 'measured Piston in $\mu$m', va='center', rotation='vertical')
+    fig.tight_layout()
     # inputPhase = np.array(inputPhase)
     # hdu = fits.PrimaryHDU(inputPhase)
     # hdul = fits.HDUList(hdu)
-    # hdul.writeto('gmtInputPhase.fits')
+    # hdul.writeto('gmtInputPhase.fits',overwrite= True)
     # res = []
     # #Now I would like to make sure CEO and lift speak the same language regarding the segments
     # for s in range(6):
