@@ -12,6 +12,7 @@ import sys
 import datetime as dt
 import os.path
 import pickle
+import copy
 
 #----- Math and Scientific Computing
 import math
@@ -1862,6 +1863,10 @@ class NGAO(object):
         notsaveKeys = ['chan1wl','debugframe','ogc','VISU', 'simul_truss_mask',
                        'wfs','gs','ph_fda_on','D2m','R2m', 'piston_estimate', 'forCorrection']
         dic2save = { x : self.chan2.__dict__[x] for x in self.chan2.__dict__.keys() if x not in notsaveKeys}
+        tmpkeys = copy.deepcopy(dic2save)
+        for k in tmpkeys.keys():
+            dic2save['chan2'+k] = dic2save[k]
+            del dic2save[k]
         tosave.update(dic2save)
         
         
@@ -1991,9 +1996,9 @@ class NGAO(object):
             self.ogtl_ticks = data['ogtl_ticks']
             self.ogtl_ogeff_probes_iter = data['ogtl_ogeff_probes_iter']
             self.ogtl_ogc_probes_iter = data['ogtl_ogc_probes_iter']
-            self.chan2.pistEstTime = data['pistEstTime']
-            self.chan2.pistEstList = data['pistEstList']
-            self.chan2.ogc_iter = data['ogc_iter']
+            self.chan2.pistEstTime = data['chan2pistEstTime']
+            self.chan2.pistEstList = data['chan2pistEstList']
+            self.chan2.ogc_iter = data['chan2ogc_iter']
 
             if 'srle' in data:
                 self.srle = data['srle']
