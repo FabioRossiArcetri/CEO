@@ -45,14 +45,17 @@ class Chan2(object):
         parser.read(path + parametersFile + '.ini')
         
         self.chan1wl = []
+        self.pistEstTime = []
         self.pistEstList = []
         self.correctionList = []
         self.debugframe = []
         self.ogc = 1
+        self.ogc_iter = []
         
         self.VISU = eval(parser.get('general', 'VISU'))
         self.simul_truss_mask = eval(parser.get('telescope', 'simul_truss_mask'))
         self.nseg = eval(parser.get('telescope','nseg'))
+        self.active_corr = eval(parser.get('2ndChan', 'active_corr'))
         
         #addition of parameters for the second channel: first the second channel source parameters
         self.cwl = eval(parser.get('2ndChan', 'wavelength2'))
@@ -353,17 +356,19 @@ class Chan2(object):
             self.wfs.R2m[5,2] = 1
             # self.wfs.R2m *= 10**-9
     
-    def OGTL(self,ogeff_chan1,cwl1):
+    def OGTL(self,ogc_chan1,cwl1):
         """/!\ This is not an actual Optical Gain Tracking Loop at the moment!!!
         This is merely a lookup table for the retrieval of an Optical Gain for the second channel
         """
+        self.ogc_iter.append(self.ogc)
+        
         #build from a fit of the points produced by Cedric
         a = -0.593
-        b = -0.243
-        c = 2.99*10**5
-        see = (ogeff_chan1-b-np.exp(c*cwl1))/a
+        b = 1.75
+        c = -6.91*10**-7
+        see = (ogc_chan1-b-(c/cwl1))/a
         
-        self.ogc = 0.3*(1-(a*see+b+np.exp(c*self.cwl)))
+        self.ogc = a*see+b+c/self.cwl
         
         
     
@@ -379,12 +384,12 @@ class Chan2(object):
         output:
             command_vector: a single dimension array of self.nseg elements"""
         
-        command_vector = np.array([np.sign(a) if np.abs(a) > 10*10**-9 else 0 
-                                   for a in self.piston_estimate])*self.chan1wl*0.8
+        command_vector = np.array([np.sign(a) if np.abs(a) > 30*10**-9 else 0 
+                                   for a in self.piston_estimate])*self.chan1wl*0.9
         
         return command_vector
             
-    def process(self,chan1OGC, dbg = False,figsize = (15,5)):
+    def process(self, dbg = False,figsize = (15,5)):
         if self.sensorType.lower() == PYRAMID_SENSOR:
             self.wfs.camera.readOut(self.exposure_time, 
                                           self.RONval,
@@ -398,7 +403,6 @@ class Chan2(object):
             self.piston_estimate *= self.ogc
             
             self.forCorrection = self.pistonRetrival(self.piston_estimate)
-            # self.forCorrection = np.sign(self.piston_estimate)*-1*self.gs.wavelength
 
             if dbg:
                 plt.figure()
@@ -428,7 +432,9 @@ class Chan2(object):
             self.piston_estimate = A_ML[:6] @ self.wfs.R2m
             self.piston_estimate *= self.gs.wavelength/(2*np.pi)
             self.forCorrection = self.pistonRetrival(self.piston_estimate)
-            
+        
+        if not(self.active_corr):
+            self.forCorrection *= 0
 
 if __name__ == '__main__':
     inputFolder = '/home/alcheffot/CEO/'
@@ -479,9 +485,41 @@ if __name__ == '__main__':
     c2.wfs.reset()
     gmt.propagate(c2.gs)
     c2.wfs.propagate(c2.gs)
-    c2.process(1)
+    c2.process()
     c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
                                 title = 'signal')
+    
+    #sweep test
+    piston = np.linspace(-5*715,5*(715+1),201)*10**-9
+    wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
+    seg = 1
+    plt.figure(10)
+    plt.clf()
+    recall = []
+    recmwl = []
+    for p in piston:
+        c2.gs.reset()
+        gmt.reset()
+        gmt.M2.modes.a[seg,0] =p
+        gmt.M2.modes.update()
+        c2.wfs.reset()
+        gmt.propagate(c2.gs)
+        c2.wfs.propagate(c2.gs)
+        
+        c2.process()
+        # measvec = c2.wfs.get_measurement()
+        # rec = c2.R2m @ measvec
+        rec = c2.piston_estimate
+        recall.append(rec[seg])
+        if p in wlmult:
+            recmwl.append(rec[seg])
+    
+
+    plt.plot(piston,recall)
+    plt.plot(wlmult,recmwl,'o' )
+    
+    
+    
 
 
 
