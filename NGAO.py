@@ -631,8 +631,8 @@ class NGAO(object):
             for jj in range(6):
                 self.probe_outer[jj] = np.argwhere(radord_data['outer_radord'] == self.probe_radord[jj])[1]
             # Add segment piston to the probe set
-            self.probe_outer = np.insert(self.probe_outer, 0, 0)
-            self.probe_radord = np.insert(self.probe_radord, 0, 1)
+            # self.probe_outer = np.insert(self.probe_outer, 0, 0)
+            # self.probe_radord = np.insert(self.probe_radord, 0, 1)
             
             print(self.probe_outer)
             print(self.probe_radord)
@@ -647,13 +647,13 @@ class NGAO(object):
             # self.ogtl_probe_params.append(dict(seg=5, mode=self.probe_outer[5], amp=2.0e-9, freq=310))
             ##### self.ogtl_probe_params.append(dict(seg=6, mode=probe_centr, amp=2.5e-9, freq=310))
             self.ogtl_probe_params = []
-            self.ogtl_probe_params.append(dict(seg=4, mode=self.probe_outer[0], amp=20.0e-9, freq=310))
-            self.ogtl_probe_params.append(dict(seg=0, mode=self.probe_outer[1], amp=2.5e-9, freq=310))
-            self.ogtl_probe_params.append(dict(seg=1, mode=self.probe_outer[2], amp=2.5e-9, freq=210))
-            self.ogtl_probe_params.append(dict(seg=2, mode=self.probe_outer[3], amp=2.5e-9, freq=210))
-            self.ogtl_probe_params.append(dict(seg=3, mode=self.probe_outer[4], amp=2.0e-9, freq=210))
-            self.ogtl_probe_params.append(dict(seg=4, mode=self.probe_outer[5], amp=2.0e-9, freq=210))
-            self.ogtl_probe_params.append(dict(seg=5, mode=self.probe_outer[6], amp=2.0e-9, freq=210))
+            # self.ogtl_probe_params.append(dict(seg=4, mode=self.probe_outer[0], amp=20.0e-9, freq=310))
+            self.ogtl_probe_params.append(dict(seg=0, mode=self.probe_outer[0], amp=2.5e-9, freq=310))
+            self.ogtl_probe_params.append(dict(seg=1, mode=self.probe_outer[1], amp=2.5e-9, freq=210))
+            self.ogtl_probe_params.append(dict(seg=2, mode=self.probe_outer[2], amp=2.5e-9, freq=210))
+            self.ogtl_probe_params.append(dict(seg=3, mode=self.probe_outer[3], amp=2.0e-9, freq=210))
+            self.ogtl_probe_params.append(dict(seg=4, mode=self.probe_outer[4], amp=2.0e-9, freq=210))
+            self.ogtl_probe_params.append(dict(seg=5, mode=self.probe_outer[5], amp=2.0e-9, freq=210))
             
 
             self.ogtl_probe_vec = np.zeros((self.nseg,self.n_mode))
@@ -1555,7 +1555,7 @@ class NGAO(object):
                     self.ogtl_ogc_centr_iter.append(self.ogtl_ogc_allmodes_centr.copy())
                     
                     #passing the ogc to the second channel for extrapolation
-                    self.chan2.OGTL(self.ogtl_ogc_allmodes_outer[0],self.gs.wavelength)
+                    self.chan2.OGTL(self.ogtl_ogc_allmodes_outer,self.gs.wavelength)
 
                     
 

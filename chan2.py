@@ -70,7 +70,7 @@ class Chan2(object):
         self.sensorType = eval(parser.get('2ndChan', 'sensorType'))
         self.RONval = eval(parser.get('2ndChan','RONval'))                # e- RMS
         self.pyr_angle = eval(parser.get('2ndChan','pyr_angle'))         # angle between pyramid facets and GMT pupil (in deg)
-
+        self.detthr = eval(parser.get('2ndChan','detthr'))
         
         # initialisation of the second channel wavefront sensor
         if self.sensorType.lower() == 'idealpistonsensor':
@@ -152,7 +152,7 @@ class Chan2(object):
             print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.gs.nPhoton))
             print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)))
             
-    def pyr_display_signals_base(self,wavefrontSensorobject, sx, sy, title=None,figsize = (15,5)):
+    def pyr_display_signals_base(self,wavefrontSensorobject, sx=0, sy=0, title=None,figsize = (15,5)):
         sx2d = wavefrontSensorobject.get_sx2d(this_sx=sx)
         sy2d = wavefrontSensorobject.get_sy2d(this_sy=sy)
         fig, (ax1,ax2) = plt.subplots(ncols=2)
@@ -366,9 +366,9 @@ class Chan2(object):
         a = -0.593
         b = 1.75
         c = -6.91*10**-7
-        see = (ogc_chan1-b-(c/cwl1))/a
+        see = (ogc_chan1[0]-b-(c/cwl1))/a
         
-        self.ogc = a*see+b+c/self.cwl
+        self.ogc = (a*see)+b+(c/self.cwl)
         
         
     
@@ -384,7 +384,7 @@ class Chan2(object):
         output:
             command_vector: a single dimension array of self.nseg elements"""
         
-        command_vector = np.array([np.sign(a) if np.abs(a) > 30*10**-9 else 0 
+        command_vector = np.array([np.sign(a) if np.abs(a) > self.detthr else 0 
                                    for a in self.piston_estimate])*self.chan1wl*0.9
         
         return command_vector
