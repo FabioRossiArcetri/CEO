@@ -57,6 +57,7 @@ class Chan2(object):
         self.nseg = eval(parser.get('telescope','nseg'))
         self.active_corr = eval(parser.get('2ndChan', 'active_corr'))
         
+        
         #addition of parameters for the second channel: first the second channel source parameters
         self.cwl = eval(parser.get('2ndChan', 'wavelength2'))
         self.band = eval(parser.get('2ndChan', 'delta_wavelength2'))
@@ -83,7 +84,7 @@ class Chan2(object):
             self.pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))
             self.nLenslet = eval(parser.get('2ndChan','nLenslet'))//self.pyr_binning            # sub-apertures across the pupil
             self.nPx = self.nLenslet*eval(parser.get('2ndChan','nPx'))
-            
+            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))
             self.pyr_separation = eval(parser.get('2ndChan','pyr_separation'))//self.pyr_binning     # separation between centers of adjacent sub-pupil images on the detector [pix]
             self.pyr_modulation = eval(parser.get('2ndChan','pyr_modulation'))     # modulation radius in lambda/D units
             self.pyr_fov = eval(parser.get('2ndChan','pyr_fov'))               # arcsec in diameter
@@ -117,7 +118,7 @@ class Chan2(object):
             self.phaseMaskDelay = eval(parser.get('2ndChan','phaseMaskDelay'))
             self.poppyOversampling = eval(parser.get('2ndChan','poppyOversampling'))
             self.gmtCalib = eval(parser.get('2ndChan','gmtStandardCalibration'))
-            
+            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))
             self.wfs = ceo.sensors.phaseContrastSensor(self.phaseMaskDiam,
                                                      self.phaseMaskDelay,
                                                      self.cwl,
@@ -400,7 +401,8 @@ class Chan2(object):
             self.piston_estimate = self.R2m @ meas
             self.piston_estimate -= self.piston_estimate[6]
             
-            self.piston_estimate *= self.ogc
+            if self.applyOgc:
+                self.piston_estimate *= self.ogc
             
             self.forCorrection = self.pistonRetrival(self.piston_estimate)
 
@@ -415,6 +417,8 @@ class Chan2(object):
             self.wfs.process(self.exposure_time)
             self.piston_estimate = self.wfs.frame.reshape(-1) @ self.R2m
             self.piston_estimate -= self.piston_estimate[6]
+            if self.applyOgc:
+                self.piston_estimate *= self.ogc
             self.forCorrection = self.pistonRetrival(self.piston_estimate)
             
             if dbg:

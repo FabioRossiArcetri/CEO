@@ -111,6 +111,12 @@ class NGAO(object):
         self.AOinitTime = eval(parser.get('general', 'AOinit'))
         self.SPPctrlInitTime = eval(parser.get('general', 'SPPctrlInit'))
         self.SPP2ndChInitTime = eval(parser.get('general', 'SPP2ndChInit'))
+        
+        self.forcePhased = eval(parser.get('general', 'forcePhase'))
+        if self.forcePhased:
+            self.forceseg = eval(parser.get('general', 'forceSeg'))
+            self.forceto = eval(parser.get('general', 'forceto'))
+        
 
         self.sep_req = self.sep_lD * self.lim/ 24.5 * ceo.constants.RAD2MAS  # in mas
         self.knumber = 2.*cp.pi/self.lim
@@ -613,7 +619,7 @@ class NGAO(object):
                           + np.mean(probes_out * self.sinFn, axis=1)**2)
 
         OG = A_out / A_in   
-
+        print('')
         for kk in range(len(self.seg_list)):
             print('  Optical Gain of mode S%d KL%d: %0.3f'%(self.seg_list[kk],self.mode_list[kk],OG[kk]))
 
@@ -1428,7 +1434,14 @@ class NGAO(object):
 #                self.gmt.M2.motion_CS.update()
 
             #----- Apply AO command, taking into account the simulated delay --------------------
-
+            if self.forcePhased:
+                comm_buffer[self.n_mode*np.arange(7)] = cp.asarray(
+                    self.gs.piston(where='segments')[0,0:7,np.newaxis]*np.ones((7,2)))
+                if self.forceseg:
+                    comm_buffer[self.n_mode*np.array(self.forceseg)] += \
+                        cp.asarray(np.array(self.forceto)[:,np.newaxis])
+            
+            
             nall = (self.D_M2_MODES.shape)[1]  ## number of modes calibrated
             self.M2modes_command = cp.asnumpy(comm_buffer[0:nall,delay].reshape((self.nseg,-1)))
             # print('comm_buffer first occurence when jj = {}'.format(jj))
@@ -2187,8 +2200,8 @@ class NGAO(object):
         self.probe_outer = np.zeros(6, dtype='int')
         for jj in range(6):
             self.probe_outer[jj] = np.argwhere(radord_data['outer_radord'] == self.probe_radord[jj])[1]
-        self.probe_outer = np.insert(self.probe_outer, 0, 0)
-        self.probe_radord = np.insert(self.probe_radord, 0, 1)
+        # self.probe_outer = np.insert(self.probe_outer, 0, 0)
+        # self.probe_radord = np.insert(self.probe_radord, 0, 1)
 
         ax2.plot(self.radord_all_outer, self.ogtl_ogc_outer_iter[ogtl_iter_ogc], '+')
         ax2.plot(self.probe_radord, self.ogtl_ogc_probes_iter[ogtl_iter_ogc], 'o')
