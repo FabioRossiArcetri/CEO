@@ -1438,7 +1438,7 @@ class NGAO(object):
                 comm_buffer[self.n_mode*np.arange(7)] = cp.asarray(
                     self.gs.piston(where='segments')[0,0:7,np.newaxis]*np.ones((7,2)))
                 if self.forceseg:
-                    comm_buffer[self.n_mode*np.array(self.forceseg)] += \
+                    comm_buffer[self.n_mode*np.array(self.forceseg)] -= \
                         cp.asarray(np.array(self.forceto)[:,np.newaxis])
             
             
