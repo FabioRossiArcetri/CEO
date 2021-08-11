@@ -64,6 +64,10 @@ class NGAO(object):
         parser.read(path + parametersFile + '.ini')        
         print(path + parametersFile + '.ini')
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
+        
+        ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+paramaterFileName+'.ini'
+        os.system('cp '+ path+paramaterFileName+'.ini ' + ini_temp_filename)
+        
         cp.cuda.Device(self.GPUnum).use()
         self.dir_calib = eval(parser.get('general', 'dir_calib'))
         self.atm_dir = eval(parser.get('general', 'atm_dir'))
@@ -1914,7 +1918,6 @@ class NGAO(object):
         tnpath = os.path.join(self.TN_dir, tnString)
         os.makedirs(tnpath,exist_ok=True)
         os.system('cp ./savedir' + str(self.GPUnum)+ '/* ' + tnpath )  
-        os.system('cp '+ inputFolder+paramaterFileName+'.ini ' + tnpath)
         print('saved in :{}'.format(tnpath))
 
         
