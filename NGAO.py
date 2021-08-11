@@ -65,8 +65,8 @@ class NGAO(object):
         print(path + parametersFile + '.ini')
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
         
-        ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+paramaterFileName+'.ini'
-        os.system('cp '+ path+paramaterFileName+'.ini ' + ini_temp_filename)
+        ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+parametersFile+'.ini'
+        os.system('cp '+ path+parametersFile+'.ini ' + ini_temp_filename)
         
         cp.cuda.Device(self.GPUnum).use()
         self.dir_calib = eval(parser.get('general', 'dir_calib'))
