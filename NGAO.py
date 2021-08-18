@@ -231,8 +231,6 @@ class NGAO(object):
             else:
                 
                 self.chan2.chan1wl = self.gs.wavelength
-            
-            self.TN_dir += self.chan2.sensorType +'/'
                         
         if self.simul_turb:
             self.atm_duration = eval(parser.get('turbulence', 'screenDuration'))
@@ -257,6 +255,8 @@ class NGAO(object):
         self.simul_variable_seeing = eval(parser.get('turbulence', 'simul_variable_seeing'))
         
         
+        self.TN_dir += self.chan2.sensorType +'/cwl{0}/seeing{1}-{2}/mag{3}/'.format(int(self.chan2.cwl*1e9), 
+                           int(np.floor(self.seeing)), int((self.seeing-np.floor(self.seeing))*1000),int(self.mag))
         
 
     def M2_KL_modes(self,figsize = (15,5)):
