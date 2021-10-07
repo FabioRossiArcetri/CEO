@@ -49,7 +49,7 @@ class LiftCEO(LIFT):
         self.nPix = self.gridSize 
         # self.mask = self.CEOcompa(pupilMask)
         # self.mask = pupilMask.copy()
-        
+        self.fluxPers = 0
         self.frame = np.zeros((self.gridSize,self.gridSize))
         self.currentPhaseEstimate = []
         self.A_ML = []
@@ -81,12 +81,12 @@ class LiftCEO(LIFT):
 
         tmpFrame = self.focalPlaneImageLIFTAberration(phase)
         # tmpFrame *= nPhotPerMs
-        tmpFrame *= wavefrontObject.nPhoton[0]*10**-3/np.sum(tmpFrame)
+        tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)
         self.frame += tmpFrame
 
         return phase
     
-    def cameraNoise(self, RON,bias):
+    def cameraNoise(self, RON=0,bias=0,excessNoise = 1):
         """This is meant to simulate photon noise and various camera noises
         (and introduces photon noise by default)
         input: frame, 
@@ -96,6 +96,10 @@ class LiftCEO(LIFT):
         rng = np.random.default_rng()
         
         self.frame = rng.poisson(self.frame).astype(float)
+        if excessNoise>1:
+            nonnullPix = self.frame>0
+            self.frame[nonnullPix] = rng.gamma(self.frame[nonnullPix]/(excessNoise-1))
+            self.frame *= (excessNoise-1)
         self.frame += rng.normal(loc = bias, scale = RON, size = self.frame.shape)
     
     
@@ -166,6 +170,7 @@ if __name__=='__main__':
     liftParamFileName = "paramsLIFT"
     
     lift = LiftCEO(path2liftParam,liftParamFileName)
+    lift.fluxPerMs = nPhotPerMs
     
     #This is a prerequisite for lift to work.
     gmt.reset()
@@ -206,7 +211,7 @@ if __name__=='__main__':
     #lets try a single segment at a time
     
     stroke = 150*10**-9
-    strokes = np.linspace(-1.5*715,1.5*715,21)*10**-9
+    strokes = np.linspace(-1500,1500,61)*10**-9
     # strokes = [150*10**-9]
     res = []
     resall = []
@@ -237,14 +242,7 @@ if __name__=='__main__':
             # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
             res.append(A_ML*lift.lambdaValue*10**-3/(2*np.pi))
         resall.append(res)
-    
-    # plt.figure(4)
-    # plt.clf()
-    # plt.imshow(lift.frame)
-    # plt.tight_layout()
-    
-    
-    
+
     plt.figure(5)
     plt.clf()
     plt.plot(strokes*10**6,res,'+-' )
@@ -260,11 +258,44 @@ if __name__=='__main__':
     for s in range(7):
         axs[s//3,s%3].plot(strokes*10**6,resall[:,s,:])
         axs[s//3,s%3].set_title('segment {}'.format(s))
-    fig.legend(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6' ],loc="lower right" )
+    fig.legend(['S0', 'S1', 'S2', 'S3', 'S4', 'S5' ],loc="lower right" , ncol = 3)
     
     fig.text(0.5, 0.04, 'true Piston in $\mu$m', ha='center')
     fig.text(0.04, 0.5, 'measured Piston in $\mu$m', va='center', rotation='vertical')
     fig.tight_layout()
+    
+    rng = np.random.default_rng(12345)
+    truspos = []
+    res = []
+    for i in range(100):
+        p = (rng.random(6)-0.5)*3.5*10**-6
+        truspos.append(p)
+        gmt.reset()
+        gs.reset()
+        lift.reset()
+        gmt.M2.modes.a[:6,0] = p
+        gmt.M2.modes.update()
+        gmt.propagate(gs)
+        # inputPhase.append(lift.propagate(gs))
+        lift.propagate(gs)
+        
+        currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+        A_ML = A_ML[:6]@R2m
+        # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
+        res.append(A_ML*lift.lambdaValue*10**-3/(2*np.pi))
+        # resall.append(res)
+    
+    plt.figure(6)
+    plt.clf()
+    s = 0
+    truspos = np.array(truspos)
+    res = np.array(res)
+    plt.plot(truspos[:,s]*10**6,res[:,s],'+')
+    plt.plot(strokes*10**6, resall[:,s,s])
+    plt.xlabel('true piston in $\mu$m ')
+    plt.ylabel('reconstructed piston in $\mu$m')
+    plt.grid()
+    
     # inputPhase = np.array(inputPhase)
     # hdu = fits.PrimaryHDU(inputPhase)
     # hdul = fits.HDUList(hdu)

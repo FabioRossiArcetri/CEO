@@ -45,6 +45,8 @@ class phaseContrastSensor(object):
         self.nPix = nPix
         self.fitsPupilFile = None
         self.fitsPhaseFile = None
+        self.fitsPupilFileName = None
+        self.fitsPhaseFileName = None
         self.frame = np.zeros((nPix,nPix))
         self.nBPixelInPupil = None
         self.longExposureframe = None
@@ -56,7 +58,7 @@ class phaseContrastSensor(object):
         self.commandVector = None
         self.curWavelength = None
         self.noMask = False
-        self.fluxPerMs = None
+        self.fluxPers = None
         
     
     def reset(self):
@@ -103,11 +105,14 @@ class phaseContrastSensor(object):
         
         """
         #turn the latest wavefront into a poppy compatible fits
-        self.poppyFits(wavefrontObject.phase.host())
+        if self.fitsPhaseFileName is not None:
+            self.poppyFits(wavefrontObject.phase.host(),fileName = self.fitsPhaseFileName)
+        else:
+            self.poppyFits(wavefrontObject.phase.host())
         
-        if self.fluxPerMs == None:#I need a flux! If you did not set it up I put magic numbers in it
+        if self.fluxPers == None:#I need a flux! If you did not set it up I put magic numbers in it
             #fluxPerMs = Number of Photons * telescope collecting area * 1 ms * telescope throuput * detector quantum efficiency
-            self.fluxPerMs = wavefrontObject.nPhoton[0] * 357.0 * 10**-3 * 0.9**4 * 0.5
+            self.fluxPers = wavefrontObject.nPhoton[0] * 357.0 *  0.9**4 * 0.5
         
         if self.curWavelength == None:
             self.curWavelength = self.wavelength
@@ -136,11 +141,11 @@ class phaseContrastSensor(object):
         osys.add_pupil(det)
 
         poppyFrame = osys.calc_psf(wavelength = self.curWavelength)
-        self.frame += poppyFrame[0].data * self.fluxPerMs*10**-3
+        self.frame += poppyFrame[0].data * self.fluxPers*10**-3
 
     
     
-    def cameraNoise(self, RON,bias):
+    def cameraNoise(self, RON=0,bias=0,excessNoise = 1):
         """This is meant to simulate photon noise and various camera noises
         (and introduces photon noise by default)
         input: frame, 
@@ -150,6 +155,10 @@ class phaseContrastSensor(object):
         rng = np.random.default_rng()
         
         self.frame = rng.poisson(self.frame).astype(float)
+        if excessNoise>1:
+            nonnullPix = self.frame>0
+            self.frame[nonnullPix] = rng.gamma(self.frame[nonnullPix]/(excessNoise-1))
+            self.frame *= (excessNoise-1)
         self.frame += rng.normal(loc = bias, scale = RON, size = self.frame.shape)
         
         
@@ -206,7 +215,9 @@ class phaseContrastSensor(object):
         if not isinstance(self.referenceFrame , np.ndarray):
             print("you first need to create the reference frame, see method set_reference_image")
             return 0
+        self.rawSignal = self.frame.copy()
         self.frame = (self.frame/(exposureTime))-self.referenceFrame
+        
         # self.frame = self.frame - (self.referenceFrame*exposureTime)
         # self.frame = self.frame - (self.referenceFrame*exposureTime*self.fluxPerMs)
         # self.frame = self.frame - (self.referenceFrame*np.sum(self.frame))
@@ -232,9 +243,9 @@ if __name__=='__main__':
     M2_n_modes = 675 # Karhunen-Loeve per M2 segment
     #M2_modes_set = u"ASM_DDKLs_S7OC04184_675kls"
     M2_modes_set = u"ASM_fittedKLs_doubleDiag"
-    expTimeMs = 0.150
+    expTimeMs = 0.001
     
-    nPx = 920
+    nPx = 128
     
     #---- Telescope parameters
     D = 25.5                # [m] Diameter of simulated square (slightly larger than GMT diameter) 
@@ -249,7 +260,7 @@ if __name__=='__main__':
     gmtStandardIM = False
     
     #base configuration of the wavefront
-    wl2nd = 805e-9
+    wl2nd = 1250e-9
     delta_wl2nd = 150e-9
     e0_Iband = 2.61e12 # zeropoint in photons/s in I band over the GMT pupil (check official photometry table!)
     
@@ -257,11 +268,11 @@ if __name__=='__main__':
     delta_wl_Iband = 150e-9  # check official photometry table!
     e0 = e0_Iband * (delta_wl2nd/delta_wl_Iband) / PupilArea    #in ph/m^2/s in the desired bandwidth
     
-    mag = 10
+    mag = 9.3
     gs = ceo.Source([wl2nd,delta_wl2nd,e0], magnitude=mag, zenith=0.,azimuth=0., rays_box_size=D, 
             rays_box_sampling=nPx, rays_origin=[0.0,0.0,25])
     gs.rays.rot_angle = 15*np.pi/180
-    nPhotPerMs = gs.nPhoton[0] * PupilArea * tel_throughput * detectorQE 
+    nPhotPerMs = gs.nPhoton[0] * PupilArea * tel_throughput * detectorQE *0.1
     
     gmt = ceo.GMT_MX(M2_mirror_modes=M2_modes_set, M2_N_MODE=M2_n_modes)
     
@@ -269,7 +280,7 @@ if __name__=='__main__':
     gmt.project_truss_onaxis = project_truss_onaxis
     
     #create the object for the phase contrast
-    zelda = phaseContrastSensor(1.06,0.0625,wl2nd,nPx)
+    zelda = phaseContrastSensor(1.5,0.0625,wl2nd,nPx)
     strokes = 25*10**-9 #later for interaction matrix
     zelda.fluxPerMs = nPhotPerMs
     # zelda.fluxPerMs = 50
@@ -285,43 +296,49 @@ if __name__=='__main__':
     plt.figure(1)
     plt.clf()
     plt.imshow(gmtMask)
+    plt.colorbar()
     #turn the pupil maks into a format poppy can read
     fileName = zelda.poppyFits(gmtMask,'GMTpupil.fits', 'transmision')
     
     #does a frame without piston with mask
-    # toto = zelda.propagate(gs)
-    # plt.figure(2)
-    # plt.clf()
-    # plt.imshow(zelda.frame*np.sum(gmtMask))
+    toto = zelda.propagate(gs)
+    plt.figure(2)
+    plt.clf()
+    plt.imshow(zelda.frame,vmin = 0.17, vmax = 0.172)
+    plt.colorbar()
     
     # #Now apply a piston to one segment and do the phase contrast image of this:
-    # gmt.reset()
-    # gs.reset()
-    # zelda.reset()
-    # gmt.M2.modes.a[0,0] = 200*10**-9
-    # gmt.M2.modes.update()
-    # gmt.propagate(gs)
+    gmt.reset()
+    gs.reset()
+    zelda.reset()
+    gmt.M2.modes.a[0,0] = 30*10**-9
+    gmt.M2.modes.update()
+    gmt.propagate(gs)
     
     # #calculate a frame with the current phase contained in gs
-    # zelda.propagate(gs)
+    zelda.propagate(gs)
+    zelda.cameraNoise(1,0,2)
+    plt.figure(3)
+    plt.clf()
+    plt.imshow(zelda.frame)
+    plt.colorbar()
     
-    # plt.figure(3)
-    # plt.clf()
-    # plt.imshow(zelda.frame)
+    #with the following we create the reference frame for later normalisation of picture.
+    #first we need a flat wavefront
+    gmt.reset()
+    gs.reset()
+    zelda.reset()
+    gmt.propagate(gs)
     
-    # #with the following we create the reference frame for later normalisation of picture.
-    # #first we need a flat wavefront
-    # gmt.reset()
-    # gs.reset()
-    # zelda.reset()
-    # gmt.propagate(gs)
-    
-    # #now we feed the wavefront to the object
-    # zelda.set_reference_image(gs)
-    # plt.figure(4)
-    # plt.clf()
-    # plt.imshow(zelda.referenceFrame)
+    #now we feed the wavefront to the object
+    zelda.set_reference_image(gs)
+    plt.figure(4)
+    plt.clf()
+    plt.imshow(zelda.referenceFrame*gmtMask)
+    plt.colorbar()
     # plt.title("reference image")
+    
+
     
     # #next is the normalisation function, at this point you should already have created 
     # #at least the reference frame
@@ -343,11 +360,11 @@ if __name__=='__main__':
     # plt.colorbar()
     # plt.title("this image should be full of zeros")
     
-    # #now repeat this with a piston on one segment
+    #now repeat this with a piston on one segment
     # gmt.reset()
     # gs.reset()
     # zelda.reset()
-    # gmt.M2.modes.a[0,0] = 200*10**-9
+    # gmt.M2.modes.a[0,0] = 30*10**-9
     # gmt.M2.modes.update()
     
     # for i in range(int(expTimeMs*10**3)):
@@ -360,9 +377,10 @@ if __name__=='__main__':
     
     # plt.figure(6)
     # plt.clf()
-    # plt.imshow(zelda.frame)
+    # plt.imshow(zelda.frame*gmtMask)
+    # plt.colorbar()
     
-    # # next we create the reconstruction matrix accoring to GMT standards
+    # # # next we create the reconstruction matrix accoring to GMT standards
     
     # if gmtStandardIM:
     #     tmpfitsPupFile = zelda.fitsPupilFile
@@ -388,17 +406,17 @@ if __name__=='__main__':
     #     zelda.propagate(gs)
         
 
-    #     zelda.process(10**-3)
+    #     zelda.process(expTimeMs)
     #     print(np.mean(zelda.frame[gmtMask.astype(bool)]))
     #     interactionMatrix[s] = zelda.frame.reshape(-1)/(strokes)
     #     if gmtStandardIM:#if we removed it replace the truss on the images
     #         zelda.frame *= gmtMask
     
-    # plt.figure(7)
-    # plt.clf()
-    # fig,axs = plt.subplots(num=7, ncols=3,nrows=3)
-    # for i in range(interactionMatrix.shape[0]):
-    #     axs[i//3,i%3].imshow(interactionMatrix[i].reshape(gmtMask.shape))
+    # # plt.figure(7)
+    # # plt.clf()
+    # # fig,axs = plt.subplots(num=7, ncols=3,nrows=3)
+    # # for i in range(interactionMatrix.shape[0]):
+    # #     axs[i//3,i%3].imshow(interactionMatrix[i].reshape(gmtMask.shape))
     # reconstructionMatrix = np.zeros((nPx**2,nseg))
     # reconstructionMatrix[:,:6] = np.linalg.pinv(interactionMatrix)
     
@@ -422,13 +440,13 @@ if __name__=='__main__':
     # gmt.propagate(gs)
     # zelda.propagate(gs)
     
-    # zelda.process(10**-3)
+    # zelda.process()
     # reconstructionVector =  zelda.frame.reshape(-1) @ reconstructionMatrix 
     # reconstructionVector -= reconstructionVector[6]
     # print(reconstructionVector)
     
-    # #lets do a sweep for the fun of it
-    # pist2apply = np.arange(-3*715,3*716,715/8)*10**-9
+    #lets do a sweep for the fun of it
+    # pist2apply = np.arange(-60,61,1)*10**-9
     # randSeg = 5
     # res = []
     # for p in pist2apply:
@@ -440,7 +458,7 @@ if __name__=='__main__':
     #     gmt.propagate(gs)
         
     #     zelda.propagate(gs)
-    #     zelda.process(10**-3)
+    #     zelda.process(expTimeMs)
     #     reconstructionVector = zelda.frame.reshape(-1) @ reconstructionMatrix
     #     reconstructionVector -= reconstructionVector[6]
     #     res.append(reconstructionVector)
