@@ -13,6 +13,7 @@ import datetime as dt
 import os.path
 import pickle
 import copy
+import shutil
 
 #----- Math and Scientific Computing
 import math
@@ -27,7 +28,7 @@ import poppy
 import matplotlib.pyplot as plt
 
 # .ini file parsing
-from configparser import ConfigParser
+from configparser import ConfigParser,NoOptionError
 from datetime import datetime
 
 from chan2 import * 
@@ -60,13 +61,18 @@ def poly_nomial(x, coefs):
 
 class NGAO(object):
     def __init__(self, path, parametersFile):
+        self.tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
+        self.path = path
         parser = ConfigParser()
         parser.read(path + parametersFile + '.ini')        
         print(path + parametersFile + '.ini')
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
+        self.tempFolder = path+'savedir{:.0f}/'.format(self.GPUnum)
+        os.makedirs(self.tempFolder+self.tnString,exist_ok=True)
         
-        ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+parametersFile+'.ini'
-        os.system('cp '+ path+parametersFile+'.ini ' + ini_temp_filename)
+        shutil.copy(path+parametersFile+'.ini', self.tempFolder+self.tnString)
+        # ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+parametersFile+'.ini'
+        # os.system('cp '+ path+parametersFile+'.ini ' + ini_temp_filename)
         
         cp.cuda.Device(self.GPUnum).use()
         self.dir_calib = eval(parser.get('general', 'dir_calib'))
@@ -104,7 +110,9 @@ class NGAO(object):
         self.lim = eval(parser.get('general', 'lim'))
         self.npad = eval(parser.get('general', 'npad'))
         self.sep_lD = eval(parser.get('general', 'sep_lD'))        
-        self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))     
+        self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))
+        if self.seg_pist_scramble:
+            self.pist_scramble_rms = eval(parser.get('general', 'pist_scramble_rms'))
         self.M2_modes_scramble = eval(parser.get('general', 'M2_modes_scramble'))
         self.save_telemetry = eval(parser.get('general', 'save_telemetry'))        
         self.do_psf_le = eval(parser.get('general', 'do_psf_le'))        
@@ -120,7 +128,10 @@ class NGAO(object):
         if self.forcePhased:
             self.forceseg = eval(parser.get('general', 'forceSeg'))
             self.forceto = eval(parser.get('general', 'forceto'))
-        
+        try:
+            self.tot_delay = eval(parser.get('general', 'tot_delay'))
+        except NoOptionError:
+            self.tot_delay = 2
 
         self.sep_req = self.sep_lD * self.lim/ 24.5 * ceo.constants.RAD2MAS  # in mas
         self.knumber = 2.*cp.pi/self.lim
@@ -190,7 +201,8 @@ class NGAO(object):
 
             self.excess_noise = eval(parser.get('pyramid1stChan', 'excess_noise'))
             self.ogtl_Ts = eval(parser.get('pyramid1stChan', 'ogtl_Ts'))
-            
+            self.ogtl_gain = eval(parser.get('pyramid1stChan', 'ogtl_gain'))
+            self.ogtl_detrend_deg = eval(parser.get('pyramid1stChan', 'ogtl_detrend_deg'))
 
             #---- Pyramid initialization
             self.wfs = ceo.Pyramid(self.nLenslet, self.nPx, modulation=self.pyr_modulation, throughput=self.throughput, separation=self.pyr_separation/self.nLenslet)
@@ -252,6 +264,8 @@ class NGAO(object):
             self.wind_direction = np.array(eval(parser.get('turbulence', 'wind_direction')))
             self.meanV = np.sum(self.wind_speed**(5.0/3.0)*self.xi0)**(3./5.)
             self.tau0 = 0.314*self.r0/self.meanV
+        else: 
+            self.seeing = 0.0
         self.simul_variable_seeing = eval(parser.get('turbulence', 'simul_variable_seeing'))
         
         
@@ -1121,6 +1135,7 @@ class NGAO(object):
     
     
     def runAll(self,mode = 'all',dbg = False, figsize = (15,5)):
+        self.tid.tic()
         self.M2_KL_modes(figsize = figsize)
         self.propagatePyramid(figsize = figsize)
         if mode == 'all':
@@ -1159,7 +1174,9 @@ class NGAO(object):
         self.phaseAveraging(figsize = figsize)
         if mode == 'all':
             self.showDL_PSF(figsize = figsize)
-        
+        self.tid.toc()
+        self.housekeep_initTime = self.tid.elapsedTime*1e-3
+        self.housekeep_stepTime = []
         self.closedLoopSimul(dbg = dbg, figsize = figsize)
         
             
@@ -1197,8 +1214,8 @@ class NGAO(object):
                 print('SPP RMS: %.1f nm'%(np.std(self.gs.piston('segments'))*1e9))
                 
 
-        if self.seg_pist_scramble:
-            self.pist_scramble_rms=10e-9   # in m RMS SURF
+        # if self.seg_pist_scramble:
+        #     self.pist_scramble_rms=10e-9   # in m RMS SURF
 
         if self.M2_modes_scramble:
             self.M2modes_scramble_rms = 5e-9  # in m RMS SURF        
@@ -1206,11 +1223,18 @@ class NGAO(object):
 
         if self.seg_pist_scramble:
             # Generate piston scramble
-            pistscramble  = np.random.normal(loc=0.0, scale=1, size=self.nseg)
-            pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            pistscramble -= np.mean(pistscramble)
-            pistscramble -= pistscramble[6]  # relative to central segment
+            rng = np.random.default_rng()
+            # pistscramble  = np.random.normal(loc=0.0, scale=1, size=self.nseg)
+            # pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
+            pistscramble = (rng.random(self.nseg)-0.5)*self.pist_scramble_rms
+            # pistscramble -= np.mean(pistscramble)
+            pistscramble[6] = 0
+            # pistscramble -= pistscramble[6]  # relative to central segment
             # Apply it to M2
+            self.gmt.M2.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M2.motion_CS.update()
+        if self.seg_pist_scramble == 'byhand':
+            pistscramble = self.pist_scramble_rms
             self.gmt.M2.motion_CS.origin[:,2] = pistscramble
             self.gmt.M2.motion_CS.update()
 
@@ -1283,10 +1307,10 @@ class NGAO(object):
             # ogtl_Ts_1 = 500e-3 # sampling during bootstrap [s]
             ogtl_sz = np.int(self.ogtl_Ts /self.Tsim)
             ogtl_count = 0
-            self.ogtl_detrend_deg = 9   # detrend time series
+            # self.ogtl_detrend_deg = 5   # detrend time series
             nprobes = len(self.ogtl_probe_params)
             self.ogtl_radord_deg  = nprobes-1   # fit OG vs radial order curve 
-            self.ogtl_gain = 0.3
+            # self.ogtl_gain = 0.3
 
             self.ogtl_timevec = np.arange(0,ogtl_sz)*self.Tsim
             self.cosFn = np.array([np.cos(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
@@ -1317,19 +1341,19 @@ class NGAO(object):
         g_pist = 1.0 # gain of regularized SPP command
 
         #---- delay simulation
-        tot_delay = 2   # in number of frames
-        delay  = tot_delay-1 
-        Mdecal = cp.zeros((tot_delay, tot_delay))
+        self.tot_delay = 2   # in number of frames
+        delay  = self.tot_delay-1 
+        Mdecal = cp.zeros((self.tot_delay, self.tot_delay))
         Mdecal[0, 0] = 1 
         if delay >= 0:
-            Mdecal[0:delay,1:tot_delay] = cp.identity(delay) 
-        Vinc   = cp.zeros((1,tot_delay))
+            Mdecal[0:delay,1:self.tot_delay] = cp.identity(delay) 
+        Vinc   = cp.zeros((1,self.tot_delay))
         Vinc[0, 0]   = 1 
         
-        comm_buffer = cp.zeros((self.ntotmodes,tot_delay))
+        comm_buffer = cp.zeros((self.ntotmodes,self.tot_delay))
         myAOest1    = cp.zeros((self.ntotmodes,1))
 
-        pist_buffer = cp.zeros((self.nseg,tot_delay))
+        pist_buffer = cp.zeros((self.nseg,self.tot_delay))
 
         #---- Time histories to save in results
         if self.save_telemetry or self.ogtl_simul:
@@ -1736,12 +1760,13 @@ class NGAO(object):
                 im_centr_iter[:,jj] = centrse #self.psf_centroid(PSFse.get())
                 
             self.tid.toc()
-            sys.stdout.write("\r iter: %d/%d, ET: %.1f s, on-axis WF RMS [nm]: %.1f"%(jj, self.totSimulIter, 
+            sys.stdout.write("\r iter: %d/%d, ET: %.2f s, on-axis WF RMS [nm]: %.1f"%(jj, self.totSimulIter, 
                                                                                       self.tid.elapsedTime*1e-3, self.gs.phaseRms()*1e9))
+            self.housekeep_stepTime.append(self.tid.elapsedTime*1e-3)
             sys.stdout.flush() 
             
             #---------- End of closed-loop iterations!!!
-            
+        self.tid.tic()
         #-- show final on-axis residual map
         if self.VISU:
             fig, ax1 = plt.subplots()
@@ -1814,14 +1839,14 @@ class NGAO(object):
                 
                 
         tosave = dict(D=self.D, nPx=self.nPx, PupilArea=self.PupilArea, Tsim=self.Tsim, 
-                      totSimulTime=self.totSimulTime, totSimulInit=self.totSimulInit,
+                      totSimulTime=self.totSimulTime, totSimulInit=self.totSimulInit,totSimulIter=self.totSimulIter,
                       simul_turb=self.simul_turb, simul_M1polish=self.simul_M1polish, 
                       simul_onaxis_AO=self.simul_onaxis_AO, simul_windload=self.simul_windload,
                       eval_perf_modal=self.eval_perf_modal, eval_perf_modal_turb=self.eval_perf_modal_turb, 
                       simul_truss_mask=self.simul_truss_mask)
 
         if self.simul_turb:
-            tosave.update(dict(totSimulIter=self.totSimulIter, seeing=self.seeing, 
+            tosave.update(dict( seeing=self.seeing, 
                                r0=self.r0, L0=self.L0, tau0=self.tau0, 
                                wind_speed=self.wind_speed, zen_angle=self.zen_angle, 
                                atm_fname=self.atm_fullname))
@@ -1844,7 +1869,7 @@ class NGAO(object):
             tosave.update(dict(band=self.band, lwfs=self.gs.wavelength, 
                                mag=self.mag, e0=self.e0, nLenslet=self.nLenslet, 
                                M2_n_modes=self.M2_n_modes, IMfile=self.IMfnameFull,
-                               pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=tot_delay, 
+                               pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=self.tot_delay, 
                                SPPctrlInit=self.SPPctrlInit, SPP2ndChInit=self.SPP2ndChInit, 
                                SPP2ndCh_Ts=self.SPP2ndCh_Ts, AOinit=AOinit))
 
@@ -1894,7 +1919,8 @@ class NGAO(object):
             if self.save_telemetry:
                 tosave.update(dict(sr_iter=sr_iter, im_centr_iter=im_centr_iter))
                 
-        filename='./savedir'+str(self.GPUnum)+'/simul_results.npz'
+        # filename='./savedir'+str(self.GPUnum)+'/simul_results.npz'
+        filename = self.tempFolder+self.tnString+'/simul_results.npz'
         np.savez_compressed(filename, **tosave)
         
         #PSF stuff:
@@ -1908,17 +1934,23 @@ class NGAO(object):
                 tosavePSF.update(dict(PSFle=PSFle.get()))
 
         if self.coro_psf or self.do_psf_le:
-            filename='./savedir'+str(self.GPUnum)+'/psf_results.npz'
+            filename=self.tempFolder+self.tnString+'/psf_results.npz'
             np.savez_compressed(filename, **tosavePSF)
-                      
+        self.tid.toc()
+        self.housekeep_saveTime = self.tid.elapsedTime*1e-3
     
     # just copy the files in ./savedir to a newly generated TN
     def saveTN(self,inputFolder,paramaterFileName):
-        tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
-        tnpath = os.path.join(self.TN_dir, tnString)
-        os.makedirs(tnpath,exist_ok=True)
-        os.system('cp ./savedir' + str(self.GPUnum)+ '/* ' + tnpath )  
-        print('saved in :{}'.format(tnpath))
+        self.tid.tic()
+        # tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
+        # tnpath = os.path.join(self.TN_dir)
+        os.makedirs(self.TN_dir,exist_ok=True)
+        shutil.move(self.tempFolder+self.tnString, self.TN_dir)
+        # os.system('cp ./savedir' + str(self.GPUnum)+ '/* ' + tnpath )  
+        print('\n saved in :{}'.format(self.TN_dir+self.tnString))
+        self.tid.toc()
+        self.housekeep_mvSave = self.tid.elapsedTime*1e-3
+        return self.TN_dir+self.tnString
 
         
     def loadTN(self, tnString):
@@ -1938,16 +1970,17 @@ class NGAO(object):
             self.eval_perf_modal_turb = data['eval_perf_modal_turb']
             self.simul_truss_mask = data['simul_truss_mask']            
             self.totSimulIter = data['totSimulIter']
-            self.seeing = data['seeing']
-            self.r0 = data['r0']
-            self.L0 = data['L0']
-            self.tau0 = data['tau0']
-            self.wind_speed = data['wind_speed']
-            self.zen_angle = data['zen_angle']
-            if 'atm_fullname' in data:
-                self.atm_fullname = data['atm_fullname']
-            if 'r0_iter' in data:
-                self.r0_iter = data['r0_iter']
+            if self.simul_turb:
+                self.seeing = data['seeing']
+                self.r0 = data['r0']
+                self.L0 = data['L0']
+                self.tau0 = data['tau0']
+                self.wind_speed = data['wind_speed']
+                self.zen_angle = data['zen_angle']
+                if 'atm_fullname' in data:
+                    self.atm_fullname = data['atm_fullname']
+                if 'r0_iter' in data:
+                    self.r0_iter = data['r0_iter']
             if 'seg_aRes_gs_iter' in data:
                 self.seg_aRes_gs_iter = data['seg_aRes_gs_iter']
             if 'seg_aTur_gs_iter' in data:

@@ -51,6 +51,7 @@ class Chan2(object):
         self.debugframe = []
         self.ogc = 1
         self.ogc_iter = []
+        self.fluxEst = []
         
         self.VISU = eval(parser.get('general', 'VISU'))
         self.simul_truss_mask = eval(parser.get('telescope', 'simul_truss_mask'))
@@ -65,7 +66,7 @@ class Chan2(object):
         self.band_inband = eval(parser.get('2ndChan', 'deltaWavelength_ClosestBand'))
         self.mag = eval(parser.get('2ndChan', 'mag'))
         self.e0 = self.e0_inband * (self.band/self.band_inband) / eval(parser.get('telescope', 'PupilArea'))    #in ph/m^2/s in the desired bandwidth
-        self.throughput =  eval(parser.get('telescope', 'tel_throughput')) * eval(parser.get('2ndChan','throughput'))  # NGWS board: 0.4
+        self.throughput =  eval(parser.get('2ndChan','throughput'))  # NGWS board: 0.4
         self.detQE = eval(parser.get('2ndChan','detectorQE'))
         #setup of the parameters for the sensor itself.
         self.sensorType = eval(parser.get('2ndChan', 'sensorType'))
@@ -101,7 +102,7 @@ class Chan2(object):
             
             self.wfs = ceo.Pyramid(self.nLenslet, self.nPx, 
                                          modulation=self.pyr_modulation, 
-                                         throughput=self.throughput, 
+                                         throughput=self.throughput * self.detQE, 
                                          separation=self.pyr_separation/self.nLenslet,
                                          high_pass_diam=self.blocking_mask_diam_forcalib)
             if self.pyr_modulation == 1.0: self.wfs.modulation_sampling = 16
@@ -124,10 +125,12 @@ class Chan2(object):
                                                      self.cwl,
                                                      self.nPx,
                                                      poppyOverSampling = self.poppyOversampling)
-            
-            
+            self.wfs.fitsPhaseFileName = 'gmtPhase{}.fits'.format(eval(parser.get('general', 'GPUnum')))
+            self.wfs.fitsPupilFileName = 'GMTPupil{}.fits'.format(eval(parser.get('general', 'GPUnum')))
+            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))
             
         elif self.sensorType.lower() == LIFT:
+            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))
             self.wfs = ceo.sensors.LiftCEO( path, parametersFile)
             
             self.nPx = self.wfs.gridSize
@@ -146,9 +149,9 @@ class Chan2(object):
                                    zenith=0.,azimuth=0., rays_box_size=eval(parser.get('telescope', 'D')), 
                                    rays_box_sampling=self.nPx, rays_origin=[0.0,0.0,25])
             self.gs.rays.rot_angle = self.pyr_angle*np.pi/180
-            if self.sensorType == PHASE_CONTRAST_SENSOR:
-                self.wfs.fluxPerMs = self.gs.nPhoton[0] *eval(parser.get('telescope', 'PupilArea')) * \
-                                            eval(parser.get('telescope', 'tel_throughput')) * self.detQE
+            if self.sensorType.lower() in [PHASE_CONTRAST_SENSOR,LIFT]:
+                self.wfs.fluxPers = self.gs.nPhoton[0] *eval(parser.get('telescope', 'PupilArea')) * \
+                                            self.throughput * self.detQE
         
             print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.gs.nPhoton))
             print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)))
@@ -179,6 +182,18 @@ class Chan2(object):
         """Initialisation of any of the three sensors considered for the second channel"""
         if self.sensorType.lower() == PYRAMID_SENSOR:
             print("calibrating the pyramid wavefrontsensor for the second channel" )
+            #identify the flux level.
+            telescopeObj.reset()
+            self.gs.reset()
+            self.wfs.reset()
+            telescopeObj.propagate(self.gs)
+            self.wfs.propagate(self.gs)
+            self.wfs.camera.readOut(0.001,0,0,1)
+            fr = self.wfs.camera.frame.host()
+            self.fluxEst = np.sum(fr)
+            
+            
+            
             self.gs.reset()
             telescopeObj.reset()
             telescopeObj.propagate(self.gs)
@@ -294,7 +309,7 @@ class Chan2(object):
             gmtMask = self.gs.amplitude.host()
             self.wfs.nBPixelInPupil = np.sum(gmtMask)
             #turn the pupil maks into a format poppy can read
-            fileName = self.wfs.poppyFits(gmtMask,'GMTpupil.fits', 'transmision')
+            # fileName = self.wfs.poppyFits(gmtMask,self.wfs.fitsPupilFileName, 'transmision')
             
 
             telescopeObj.reset()
@@ -303,18 +318,18 @@ class Chan2(object):
             telescopeObj.propagate(self.gs)
             #Setting up the reference image for later normalisation
             self.wfs.set_reference_image(self.gs)
-            
+            #The gmt calib mode is currently not functionnal.
             if self.gmtCalib:
-                tmpfitsPupFile = self.wfs.fitsPupilFile
+                # tmpfitsPupFile = self.wfs.fitsPupilFile
                 tmpproject_truss_onaxis = telescopeObj.project_truss_onaxis
                 telescopeObj.project_truss_onaxis = False
                 self.gs.reset()
                 telescopeObj.reset()
                 telescopeObj.propagate(self.gs)
                 
-                self.wfs.poppyFits(self.gs.amplitude.host() \
-                                            ,fileName='noTrussGMTMask.fits'
-                                            , typeOfArray= 'amplitude')
+                # self.wfs.poppyFits(self.gs.amplitude.host() \
+                #                             ,fileName='noTrussGMTMask.fits'
+                #                             , typeOfArray= 'amplitude')
             
             self.interactionMatrix  = np.zeros((self.nseg-1,self.nPx**2))
             for s in range(self.nseg-1):
@@ -338,7 +353,7 @@ class Chan2(object):
             self.R2m[:,:6] = np.linalg.pinv(self.interactionMatrix)
             
             if self.gmtCalib:
-                self.wfs.fitsPupilFile = tmpfitsPupFile
+                # self.wfs.fitsPupilFile = tmpfitsPupFile
                 telescopeObj.project_truss_onaxis = tmpproject_truss_onaxis
             
         if self.sensorType.lower()==LIFT:
@@ -348,13 +363,13 @@ class Chan2(object):
             gmtMask = self.gs.amplitude.host()
             self.wfs.mask = self.wfs.CEOcompa(gmtMask)
             
-            self.wfs.R2m = np.zeros((6,6))
-            self.wfs.R2m[0,1] = 1
-            self.wfs.R2m[1,0] = 1
-            self.wfs.R2m[2,5] = 1
-            self.wfs.R2m[3,4] = 1
-            self.wfs.R2m[4,3] = 1
-            self.wfs.R2m[5,2] = 1
+            self.R2m = np.zeros((6,7))
+            self.R2m[0,1] = 1
+            self.R2m[1,0] = 1
+            self.R2m[2,5] = 1
+            self.R2m[3,4] = 1
+            self.R2m[4,3] = 1
+            self.R2m[5,2] = 1
             # self.wfs.R2m *= 10**-9
     
     def OGTL(self,ogc_chan1,cwl1):
@@ -392,6 +407,7 @@ class Chan2(object):
             
     def process(self, dbg = False,figsize = (15,5)):
         if self.sensorType.lower() == PYRAMID_SENSOR:
+            
             self.wfs.camera.readOut(self.exposure_time, 
                                           self.RONval,
                                           0,
@@ -413,7 +429,7 @@ class Chan2(object):
             self.wfs.reset()
         if self.sensorType==PHASE_CONTRAST_SENSOR:
             
-            self.wfs.cameraNoise(self.RONval,0)
+            self.wfs.cameraNoise(self.RONval,0,self.excess_noise)
             self.wfs.process(self.exposure_time)
             self.piston_estimate = self.wfs.frame.reshape(-1) @ self.R2m
             self.piston_estimate -= self.piston_estimate[6]
@@ -429,11 +445,11 @@ class Chan2(object):
             self.wfs.reset()
         
         if self.sensorType==LIFT:
-
-            self.wfs.cameraNoise(self.RONval,0)
+            
+            self.wfs.cameraNoise(self.RONval,0,self.excess_noise)
             currentPhaseEstimate, A_ML = self.wfs.phaseEstimation(self.wfs.frame, False, 1e-6, 1e-5)
             
-            self.piston_estimate = A_ML[:6] @ self.wfs.R2m
+            self.piston_estimate = A_ML[:6] @ self.R2m
             self.piston_estimate *= self.gs.wavelength/(2*np.pi)
             self.forCorrection = self.pistonRetrival(self.piston_estimate)
         
@@ -442,7 +458,7 @@ class Chan2(object):
 
 if __name__ == '__main__':
     inputFolder = '/home/alcheffot/CEO/'
-    parametersFileName = 'paramsPyr'
+    parametersFileName = 'paramsZPC1250'
     
     c2 = Chan2(inputFolder,parametersFileName)
     c2.chan1wl = 715*10**-9
@@ -477,28 +493,37 @@ if __name__ == '__main__':
     
     #did the masking work
     seg = 2
-    toto,tata = c2.pyr_display_signals_base(c2.wfs,c2.D2m[:c2.wfs.n_sspp,seg],
-                                            c2.D2m[c2.wfs.n_sspp:,seg],
-                                            title = 'interaction matrix')
-    c2.pyr_display_signals_base(c2.wfs,c2.R2m[seg,:c2.wfs.n_sspp],
-                                c2.R2m[seg,c2.wfs.n_sspp:],
-                                title = 'reconstruction matrix' )
+    # toto,tata = c2.pyr_display_signals_base(c2.wfs,c2.D2m[:c2.wfs.n_sspp,seg],
+    #                                         c2.D2m[c2.wfs.n_sspp:,seg],
+    #                                         title = 'interaction matrix')
+    # c2.pyr_display_signals_base(c2.wfs,c2.R2m[seg,:c2.wfs.n_sspp],
+    #                             c2.R2m[seg,c2.wfs.n_sspp:],
+    #                             title = 'reconstruction matrix' )
     
     gmt.reset()
     c2.gs.reset()
     c2.wfs.reset()
+    gmt.M2.modes.a[seg,0] =60*10**-9
+    gmt.M2.modes.update()
     gmt.propagate(c2.gs)
     c2.wfs.propagate(c2.gs)
-    c2.process()
-    c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
-                                title = 'signal')
+    c2.wfs.frame*=150
+    c2.wfs.cameraNoise(1,0,1.3)
+    c2.wfs.process(0.001)
+    # c2.process()
+    plt.figure(1)
+    plt.clf()
+    # plt.imshow(c2.wfs.frame-c2.wfs.referenceFrame)
+    plt.imshow(c2.wfs.frame)
+    # c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
+    #                             title = 'signal')
     
     #sweep test
-    piston = np.linspace(-5*715,5*(715+1),201)*10**-9
-    wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
+    # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
+    # wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
+    piston = np.linspace(-60,61,121)*10**-9
     seg = 1
-    plt.figure(10)
-    plt.clf()
+
     recall = []
     recmwl = []
     for p in piston:
@@ -509,18 +534,19 @@ if __name__ == '__main__':
         c2.wfs.reset()
         gmt.propagate(c2.gs)
         c2.wfs.propagate(c2.gs)
-        
+        c2.wfs.frame*=150
         c2.process()
         # measvec = c2.wfs.get_measurement()
         # rec = c2.R2m @ measvec
         rec = c2.piston_estimate
         recall.append(rec[seg])
-        if p in wlmult:
-            recmwl.append(rec[seg])
+        # if p in wlmult:
+        #     recmwl.append(rec[seg])
     
-
+    plt.figure(2)
+    plt.clf()
     plt.plot(piston,recall)
-    plt.plot(wlmult,recmwl,'o' )
+    # plt.plot(wlmult,recmwl,'o' )
     
     
     
