@@ -306,8 +306,8 @@ class Chan2(object):
             self.gs.reset()
             self.wfs.reset()
             telescopeObj.propagate(self.gs)
-            gmtMask = self.gs.amplitude.host()
-            self.wfs.nBPixelInPupil = np.sum(gmtMask)
+            self.gmtMask = self.gs.amplitude.host()
+            self.wfs.nBPixelInPupil = np.sum(self.gmtMask)
             #turn the pupil maks into a format poppy can read
             # fileName = self.wfs.poppyFits(gmtMask,self.wfs.fitsPupilFileName, 'transmision')
             
@@ -344,10 +344,11 @@ class Chan2(object):
                 # feed the wavefront to the propagate method
                 self.wfs.propagate(self.gs)
                 self.wfs.process(10**-3)
+                # self.wfs.frame /= self.wfs.fluxPers *10**-3
                 self.interactionMatrix[s] = self.wfs.frame.reshape(-1)/(self.PSstroke)
                 if self.gmtCalib:#if we removed it replace the truss on the images
                     #/!\ this also remove the signal outside the segments!
-                    self.wfs.frame *= gmtMask
+                    self.wfs.frame *= self.gmtMask
             
             self.R2m = np.zeros((self.nPx**2,self.nseg))
             self.R2m[:,:6] = np.linalg.pinv(self.interactionMatrix)
@@ -430,6 +431,7 @@ class Chan2(object):
         if self.sensorType==PHASE_CONTRAST_SENSOR:
             
             self.wfs.cameraNoise(self.RONval,0,self.excess_noise)
+            # estflux = np.sum(self.wfs.frame*self.gmtMask)
             self.wfs.process(self.exposure_time)
             self.piston_estimate = self.wfs.frame.reshape(-1) @ self.R2m
             self.piston_estimate -= self.piston_estimate[6]
@@ -508,7 +510,7 @@ if __name__ == '__main__':
     gmt.propagate(c2.gs)
     c2.wfs.propagate(c2.gs)
     c2.wfs.frame*=150
-    c2.wfs.cameraNoise(1,0,1.3)
+    # c2.wfs.cameraNoise(0,0,1)
     c2.wfs.process(0.001)
     # c2.process()
     plt.figure(1)
@@ -521,7 +523,7 @@ if __name__ == '__main__':
     #sweep test
     # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
     # wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
-    piston = np.linspace(-60,61,121)*10**-9
+    piston = np.linspace(-1500,1500,121)*10**-9
     seg = 1
 
     recall = []

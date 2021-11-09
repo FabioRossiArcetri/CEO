@@ -723,7 +723,7 @@ class NGAO(object):
             self.atm_fullname=None
 
             self.atm = ceo.Atmosphere(self.r0,self.L0,len(self.altitude),self.altitude,self.xi0,self.wind_speed,self.wind_direction,
-                             L=26,NXY_PUPIL=346,fov=0.0*ceo.constants.ARCMIN2RAD, filename=self.atm_fullname, duration=self.atm_duration)
+                             L=26,NXY_PUPIL=self.nPx,fov=0.0*ceo.constants.ARCMIN2RAD, filename=self.atm_fullname, duration=self.atm_duration)
                                  #duration=5.0, N_DURATION=6)
             
             if self.simul_variable_seeing:
