@@ -29,7 +29,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 
 # .ini file parsing
-from configparser import ConfigParser
+from configparser import ConfigParser,NoOptionError
 from datetime import datetime
 
 PYRAMID_SENSOR = 'pyramid'
@@ -57,7 +57,17 @@ class Chan2(object):
         self.simul_truss_mask = eval(parser.get('telescope', 'simul_truss_mask'))
         self.nseg = eval(parser.get('telescope','nseg'))
         self.active_corr = eval(parser.get('2ndChan', 'active_corr'))
-        
+        try:
+            self.rescaleAtmResidual = eval(parser.get('2ndChan', 'rescale_atm_residual'))
+            if self.rescaleAtmResidual:
+                self.rescaleTo = eval(parser.get('2ndChan', 'rescale_to'))
+                self.rescaleFactor = 1
+                print('second channel atmospheric residuals will be rescaled to {} nm'
+                      .format(self.rescaleTo*10**9))
+        except NoOptionError:
+            print('no atmospheric residuals rescaling' )
+            self.rescaleAtmResidual = False
+            self.rescaleFactor = 1
         
         #addition of parameters for the second channel: first the second channel source parameters
         self.cwl = eval(parser.get('2ndChan', 'wavelength2'))
@@ -71,6 +81,10 @@ class Chan2(object):
         #setup of the parameters for the sensor itself.
         self.sensorType = eval(parser.get('2ndChan', 'sensorType'))
         self.RONval = eval(parser.get('2ndChan','RONval'))                # e- RMS
+        try:
+            self.background = eval(parser.get('2ndChan','background'))
+        except NoOptionError:
+            self.background = 0
         self.pyr_angle = eval(parser.get('2ndChan','pyr_angle'))         # angle between pyramid facets and GMT pupil (in deg)
         self.detthr = eval(parser.get('2ndChan','detthr'))
         
@@ -111,7 +125,7 @@ class Chan2(object):
             if self.applySignalMasking == 'custom':
                 self.path2sigstd = eval(parser.get('2ndChan','path2stdSig'))
                 self.maskthr = eval(parser.get('2ndChan','maskThr'))
-                
+         
             
         elif self.sensorType.lower()==PHASE_CONTRAST_SENSOR:
             self.nPx = eval(parser.get('2ndChan','nPx'))
@@ -156,10 +170,20 @@ class Chan2(object):
             print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.gs.nPhoton))
             print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)))
             
-    def pyr_display_signals_base(self,wavefrontSensorobject, sx=0, sy=0, title=None,figsize = (15,5)):
+        #For telemetry data saving
+        self.gs2wfe = []
+        self.gs2segPistErr = []
+    
+        
+    def reset(self):
+        self.gs.reset()
+        self.wfs.reset()
+    
+    
+    def pyr_display_signals_base(self,wavefrontSensorobject, sx=0, sy=0, title=None,fignum = 0, figsize = (15,5)):
         sx2d = wavefrontSensorobject.get_sx2d(this_sx=sx)
         sy2d = wavefrontSensorobject.get_sy2d(this_sy=sy)
-        fig, (ax1,ax2) = plt.subplots(ncols=2)
+        fig, (ax1,ax2) = plt.subplots(num = fignum,ncols=2)
         fig.set_size_inches(figsize)
         if title==None:
             title = ['Sx', 'Sy']
@@ -180,6 +204,15 @@ class Chan2(object):
     
     def CalibAndRM(self,telescopeObj, figsize = (15,5)):
         """Initialisation of any of the three sensors considered for the second channel"""
+        if self.rescaleAtmResidual:
+            
+            #link the phase part to this
+            self.gs2phase = ceo.tools.ascupy(self.gs.wavefront.phase)
+            self.gs.reset()
+            telescopeObj.reset()
+            telescopeObj.propagate(self.gs)
+            self.gs2inpup = ceo.tools.ascupy(self.gs.wavefront.amplitude)
+            
         if self.sensorType.lower() == PYRAMID_SENSOR:
             print("calibrating the pyramid wavefrontsensor for the second channel" )
             #identify the flux level.
@@ -188,7 +221,8 @@ class Chan2(object):
             self.wfs.reset()
             telescopeObj.propagate(self.gs)
             self.wfs.propagate(self.gs)
-            self.wfs.camera.readOut(0.001,0,0,1)
+            # self.wfs.camera.noiselessReadOut(self.exposure_time)
+            self.wfs.camera.readOut(self.exposure_time,self.background,self.RONval,self.excess_noise)
             fr = self.wfs.camera.frame.host()
             self.fluxEst = np.sum(fr)
             
@@ -232,7 +266,7 @@ class Chan2(object):
                 sx2d, sy2d = self.pyr_display_signals_base(self.wfs,sx,sy,figsize = figsize)
             
             self.D2m = self.D2.copy()
-            if self.applySignalMasking and (self.applySignalMasking!='custom'):
+            if self.applySignalMasking and not(self.applySignalMasking in ['custom','onlypupil']):
                 segpist_signal_mask = telescopeObj.NGWS_segment_piston_mask(self.wfs, self.gs)
                 
                 self.D2m = telescopeObj.NGWS_apply_segment_piston_mask(self.D2m, segpist_signal_mask['mask'])
@@ -270,7 +304,38 @@ class Chan2(object):
                                        'stroke': np.linspace(-3*self.chan1wl,3*self.chan1wl,101)}
                 self.D2m = telescopeObj.NGWS_apply_segment_piston_mask(self.D2m,segpist_signal_mask['mask'])
                 self.wfs.segpist_signal_mask = segpist_signal_mask
-
+            elif self.applySignalMasking == 'onlypupil':
+                telescopeObj.reset()
+                self.gs.reset()
+                self.wfs.reset()
+                telescopeObj.propagate(self.gs)
+                self.wfs.propagate(self.gs)
+                sxval = np.abs(self.wfs.get_sx2d())>0
+                syval = np.abs(self.wfs.get_sy2d())>0
+                validSubApertureMap = sxval +syval
+                
+                telescopeObj.reset()
+                self.mask = []
+                self.gs.reset()
+                telescopeObj.propagate(self.gs)
+                onlypupil = []
+                for s in range(self.nseg-1):
+                    telescopeObj.reset()
+                    self.gs.reset()
+                    telescopeObj.M2.modes.a[s,0] =100*10**-9
+                    telescopeObj.M2.modes.update()
+                    telescopeObj.propagate(self.gs)
+                    self.mask.append(np.round(self.gs.phase.host()
+                                              /(100*10**-9)).astype(np.int))
+                    onlypupil.append(self.mask[-1][validSubApertureMap])
+                self.maskthr = 1
+                segpist_signal_mask = {'mask': onlypupil,'thr': self.maskthr, 
+                                       'stroke': np.linspace(-3*self.chan1wl,3*self.chan1wl,101)}
+                self.D2m = telescopeObj.NGWS_apply_segment_piston_mask(self.D2m,segpist_signal_mask['mask'])
+                self.wfs.segpist_signal_mask = segpist_signal_mask
+                
+                
+                
                 
                 
             
@@ -372,6 +437,16 @@ class Chan2(object):
             self.R2m[4,3] = 1
             self.R2m[5,2] = 1
             # self.wfs.R2m *= 10**-9
+            
+    def propagate(self):
+        if self.rescaleAtmResidual:
+            self.rescaleFactor = cp.divide(cp.array(self.rescaleTo),
+                                           cp.std(self.gs2phase[self.gs2inpup.astype(cp.bool)]))
+            self.gs2phase *= self.rescaleFactor
+        self.gs2wfe.append(self.gs.wavefront.rms()[0])
+        self.gs2segPistErr.append(self.gs.piston(where='segments')[0])
+        self.wfs.propagate(self.gs)
+    
     
     def OGTL(self,ogc_chan1,cwl1):
         """/!\ This is not an actual Optical Gain Tracking Loop at the moment!!!
@@ -408,10 +483,10 @@ class Chan2(object):
             
     def process(self, dbg = False,figsize = (15,5)):
         if self.sensorType.lower() == PYRAMID_SENSOR:
-            
+            # self.wfs.camera.noiselessReadOut(self.exposure_time)
             self.wfs.camera.readOut(self.exposure_time, 
                                           self.RONval,
-                                          0,
+                                          self.background,
                                           self.excess_noise)
             self.wfs.process()
             meas = self.wfs.get_measurement()
@@ -460,7 +535,7 @@ class Chan2(object):
 
 if __name__ == '__main__':
     inputFolder = '/home/alcheffot/CEO/'
-    parametersFileName = 'paramsZPC1250'
+    parametersFileName = 'paramsPyr1650'
     
     c2 = Chan2(inputFolder,parametersFileName)
     c2.chan1wl = 715*10**-9
@@ -509,7 +584,7 @@ if __name__ == '__main__':
     gmt.M2.modes.update()
     gmt.propagate(c2.gs)
     c2.wfs.propagate(c2.gs)
-    c2.wfs.frame*=150
+    # c2.wfs.frame*=150
     # c2.wfs.cameraNoise(0,0,1)
     c2.wfs.process(0.001)
     # c2.process()
@@ -536,7 +611,7 @@ if __name__ == '__main__':
         c2.wfs.reset()
         gmt.propagate(c2.gs)
         c2.wfs.propagate(c2.gs)
-        c2.wfs.frame*=150
+        # c2.wfs.frame*=150
         c2.process()
         # measvec = c2.wfs.get_measurement()
         # rec = c2.R2m @ measvec

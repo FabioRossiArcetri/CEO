@@ -1636,7 +1636,7 @@ class NGAO(object):
                     
                     if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                         self.chan2.wfs.reset()
-                        self.chan2.wfs.propagate(self.chan2.gs)
+                        self.chan2.propagate()
 
                         #if simul_windload==False:
                         #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
@@ -1681,7 +1681,7 @@ class NGAO(object):
                         if self.chan2.sensorType.lower() == 'idealpistonsensor':
                             self.onps.propagate(self.gs)
                         if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
-                            self.chan2.wfs.propagate(self.chan2.gs)
+                            self.chan2.propagate()
                             
                         self.SPP2ndCh_count+=1
                             
@@ -1761,7 +1761,8 @@ class NGAO(object):
                 
             self.tid.toc()
             sys.stdout.write("\r iter: %d/%d, ET: %.2f s, on-axis WF RMS [nm]: %.1f"%(jj, self.totSimulIter, 
-                                                                                      self.tid.elapsedTime*1e-3, self.gs.phaseRms()*1e9))
+                                                                                      self.tid.elapsedTime*1e-3, 
+                                                                                      self.gs.phaseRms()*1e9))
             self.housekeep_stepTime.append(self.tid.elapsedTime*1e-3)
             sys.stdout.flush() 
             
@@ -1903,7 +1904,8 @@ class NGAO(object):
                 
         #save second channel data
         notsaveKeys = ['chan1wl','debugframe','ogc','VISU', 'simul_truss_mask',
-                       'wfs','gs','ph_fda_on','D2m','R2m', 'piston_estimate', 'forCorrection']
+                       'wfs','gs','ph_fda_on','D2m','R2m', 'piston_estimate', 
+                       'forCorrection', 'gs2phase', 'gs2inpup' ]
         dic2save = { x : self.chan2.__dict__[x] for x in self.chan2.__dict__.keys() if x not in notsaveKeys}
         tmpkeys = copy.deepcopy(dic2save)
         for k in tmpkeys.keys():
