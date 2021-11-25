@@ -36,6 +36,10 @@ PYRAMID_SENSOR = 'pyramid'
 PHASE_CONTRAST_SENSOR = 'phasecontrast' 
 LIFT = 'lift'
 
+def rebin(arr, new_shape):
+    shape = (new_shape[0], int(arr.shape[0] // new_shape[0]),
+             new_shape[1], int(arr.shape[1] // new_shape[1]))
+    return arr.reshape(shape).mean(-1).mean(1)
 
 class Chan2(object):
     """object meant to wrap everything the second channel may do"""
@@ -52,6 +56,7 @@ class Chan2(object):
         self.ogc = 1
         self.ogc_iter = []
         self.fluxEst = []
+        self.forCorrection = np.zeros(7)
         
         self.VISU = eval(parser.get('general', 'VISU'))
         self.simul_truss_mask = eval(parser.get('telescope', 'simul_truss_mask'))
@@ -128,7 +133,12 @@ class Chan2(object):
          
             
         elif self.sensorType.lower()==PHASE_CONTRAST_SENSOR:
-            self.nPx = eval(parser.get('2ndChan','nPx'))
+            
+            try :
+                self.nLenslet = eval(parser.get('2ndChan','nLenslet'))
+            except NoOptionError:
+                self.nLenslet = 1
+            self.nPx = eval(parser.get('2ndChan','nPx'))*self.nLenslet
             self.phaseMaskDiam = eval(parser.get('2ndChan','phaseMaskDiameter'))
             self.phaseMaskDelay = eval(parser.get('2ndChan','phaseMaskDelay'))
             self.poppyOversampling = eval(parser.get('2ndChan','poppyOversampling'))
@@ -138,6 +148,7 @@ class Chan2(object):
                                                      self.phaseMaskDelay,
                                                      self.cwl,
                                                      self.nPx,
+                                                     self.nLenslet,
                                                      poppyOverSampling = self.poppyOversampling)
             self.wfs.fitsPhaseFileName = 'gmtPhase{}.fits'.format(eval(parser.get('general', 'GPUnum')))
             self.wfs.fitsPupilFileName = 'GMTPupil{}.fits'.format(eval(parser.get('general', 'GPUnum')))
@@ -166,6 +177,7 @@ class Chan2(object):
             if self.sensorType.lower() in [PHASE_CONTRAST_SENSOR,LIFT]:
                 self.wfs.fluxPers = self.gs.nPhoton[0] *eval(parser.get('telescope', 'PupilArea')) * \
                                             self.throughput * self.detQE
+                self.fluxEst = self.wfs.fluxPers*self.exposure_time
         
             print('Number of simulated NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.gs.nPhoton))
             print('Number of  expected NGAO GS photons at the second channel[ph/s/m^2]: %.1f'%(self.e0*10**(-0.4*self.mag)))
@@ -221,8 +233,8 @@ class Chan2(object):
             self.wfs.reset()
             telescopeObj.propagate(self.gs)
             self.wfs.propagate(self.gs)
-            # self.wfs.camera.noiselessReadOut(self.exposure_time)
-            self.wfs.camera.readOut(self.exposure_time,self.background,self.RONval,self.excess_noise)
+            self.wfs.camera.noiselessReadOut(self.exposure_time)
+            # self.wfs.camera.readOut(self.exposure_time,self.background,self.RONval,self.excess_noise)
             fr = self.wfs.camera.frame.host()
             self.fluxEst = np.sum(fr)
             
@@ -320,14 +332,19 @@ class Chan2(object):
                 telescopeObj.propagate(self.gs)
                 onlypupil = []
                 for s in range(self.nseg-1):
-                    telescopeObj.reset()
-                    self.gs.reset()
-                    telescopeObj.M2.modes.a[s,0] =100*10**-9
-                    telescopeObj.M2.modes.update()
-                    telescopeObj.propagate(self.gs)
-                    self.mask.append(np.round(self.gs.phase.host()
-                                              /(100*10**-9)).astype(np.int))
+                    # telescopeObj.reset()
+                    # self.gs.reset()
+                    # telescopeObj.M2.modes.a[s,0] =100*10**-9
+                    # telescopeObj.M2.modes.update()
+                    # telescopeObj.propagate(self.gs)
+                    mask = rebin(self.gs.amplitude.host(),(self.nLenslet,self.nLenslet))>=0.8
+                    self.mask.append(mask)
+                    # self.mask.append(np.round(self.gs.phase.host()
+                    #                           /(100*10**-9)).astype(np.int))
                     onlypupil.append(self.mask[-1][validSubApertureMap])
+                mask = np.zeros((mask.shape),dtype=bool)
+                self.mask.append(mask)
+                onlypupil.append(self.mask[-1][validSubApertureMap])
                 self.maskthr = 1
                 segpist_signal_mask = {'mask': onlypupil,'thr': self.maskthr, 
                                        'stroke': np.linspace(-3*self.chan1wl,3*self.chan1wl,101)}
@@ -371,8 +388,8 @@ class Chan2(object):
             self.gs.reset()
             self.wfs.reset()
             telescopeObj.propagate(self.gs)
-            self.gmtMask = self.gs.amplitude.host()
-            self.wfs.nBPixelInPupil = np.sum(self.gmtMask)
+            self.gmtMask = self.wfs.rebin(self.gs.amplitude.host(),[self.nLenslet,self.nLenslet])
+            self.wfs.n_sspp = np.sum(self.gmtMask)
             #turn the pupil maks into a format poppy can read
             # fileName = self.wfs.poppyFits(gmtMask,self.wfs.fitsPupilFileName, 'transmision')
             
@@ -396,7 +413,7 @@ class Chan2(object):
                 #                             ,fileName='noTrussGMTMask.fits'
                 #                             , typeOfArray= 'amplitude')
             
-            self.interactionMatrix  = np.zeros((self.nseg-1,self.nPx**2))
+            self.interactionMatrix  = np.zeros((self.nseg-1,self.nLenslet**2))
             for s in range(self.nseg-1):
                 #set up the wavefront to feed to the propagation
                 self.gs.reset()
@@ -411,11 +428,11 @@ class Chan2(object):
                 self.wfs.process(10**-3)
                 # self.wfs.frame /= self.wfs.fluxPers *10**-3
                 self.interactionMatrix[s] = self.wfs.frame.reshape(-1)/(self.PSstroke)
-                if self.gmtCalib:#if we removed it replace the truss on the images
+                # if self.gmtCalib:#if we removed it replace the truss on the images
                     #/!\ this also remove the signal outside the segments!
-                    self.wfs.frame *= self.gmtMask
+                self.wfs.frame *= self.gmtMask
             
-            self.R2m = np.zeros((self.nPx**2,self.nseg))
+            self.R2m = np.zeros((self.nLenslet**2,self.nseg))
             self.R2m[:,:6] = np.linalg.pinv(self.interactionMatrix)
             
             if self.gmtCalib:
@@ -464,7 +481,160 @@ class Chan2(object):
         
         
     
+    def piston_est3(lambda0,lambda1,lambda2,s1,s2,
+                span = [-3000*10**-9,3000*10**-9],# nm
+                amp_conf = 0.1, # seuil de confiance
+                apriori = np.array([[-3000*10**-9, 3000*10**-9]]), # tableau 2*n (n le nombre d'intervalles a considere pour 0
+                lift = True, #on utilise lift
+                zm = False):#on utilise le zernike
+        """
+        This function is aimed at unwrapping a dual wavelength measurement
+        input:
+            lambda0, lambda1, lambda2: floats
+                The wavelengths of the first channel (lambda0) and the wavelengths at 
+                which you are measuring (lambda1 and lambda2) in meters
+            
+            s1, s2: floats
+            The signal produced by a measurement at lambda1 and lambda2. This is unit less.
+            
+            span: array of 2 floats, optionnal
+            The search space in which the piston can be in meters
+            
+            amp_conf: float, optional
+            the confidence threshold for accepting a piston as possible solution. This is unitless
+            
+            apriori: array of 2xN, optionnal
+            a priori contain all the intervals in which, the solution is likely to be.
+            This is an array in which apriori[0] contain all the span begining and 
+            apriori[1] all the span end. the boundaries must be given in meters
+            
+            lift : bool, optionnal
+            set this option to True is you are using the lift wavefront sensor
+            
+            zm : bool, optionnal
+            set this option to True if you are using the zernike phase contrast sensor.
+            
+        output:
+            the estimate of the piston difference in meters 
+        
+        Authors : Cedric Plantet, Simonet Esposito, Enrico Pinna
+        Translation to python: pyIDL and Anne-Laure Cheffot
+        """
+        #for compatibility with CEO
+        #CEO uses only meters for wavelength this function uses nm
+        #Hance converting the input from meters to nanometers
+        lambda0*= 10**9
+        lambda1*=10**9
+        lambda2*=10**9
+        span = [a*10**9 for a in span]
+        apriori *= 10**9
+        
     
+        if np.abs(s1) < .05 and np.abs(s2) < .05 :
+            print('Signals < 0.05, returning 0')
+            return 0
+        
+        
+        npts = 1e5
+        x = np.arange(npts)*(span[1]-span[0])/(npts-1)+span[0]
+        
+        if not zm :
+            if abs(s1) > 1: s1 = np.sign(s1)
+            if abs(s2) > 1: s2 = np.sign(s2)
+        else:#TODO this case does not work in python. maybe one day
+            s1 = (s1 < 1) > (-.8)
+            s2 = (s2 < 1) > (-.8)
+        
+        
+        mask0 = np.zeros(int(npts))
+        for i in range(0, len(apriori)):
+            cur_idx = np.where(np.logical_and(x>= apriori[i,0],x<=apriori[i,1]))
+            # cur_idx = (x >= apriori[0]).nonzero()
+            # cur_idx = cur_idx[0]
+            # i] & x <= apriori[1,i] = len(cur_idx)
+            mask0[cur_idx] = 1
+        
+        
+        if not lift :
+            signal1 = np.sin(x*2*np.pi/lambda1)
+            signal2 = np.sin(x*2*np.pi/lambda2)
+            if zm :
+                signal1[signal1 < 0] *= 0.8
+                signal2[signal2 < 0] *= 0.8
+        else:
+            signal1 = np.arctan(np.tan(x*np.pi/lambda1))*2./np.pi
+            signal2 = np.arctan(np.tan(x*np.pi/lambda2))*2./np.pi
+        
+        
+        #pistons that give the expected signal within the threshold
+        mask1 = np.logical_and(signal1 >= s1-amp_conf, signal1 < s1+amp_conf)
+        #
+        #Same for 2nd lambda
+        mask2 = np.logical_and(signal2 >= s2-amp_conf, signal2 < s2+amp_conf)
+        #
+        
+        mask = mask1*mask2*mask0
+        #stop
+        #detect intervals & select potential solutions
+        idx_est = mask.nonzero()[0]#
+        # idx_est = idx_est[0]
+        count_est = len(idx_est)
+        if count_est != 0 :
+            opd_est = np.mean(x[idx_est])
+            opd_est_ptv = np.max(x[idx_est])-np.min(x[idx_est])
+            if opd_est_ptv > lambda0/2. :
+                print,'Ambiguous estimation'
+                i_amb = 1
+                while opd_est_ptv > lambda0/2. :
+                    mask_shift = mask*np.roll(mask,i_amb)
+                    idx_est_amb = (mask_shift).nonzero()	#
+                    idx_est_amb = idx_est_amb[0]
+                    count_shift = len(idx_est_amb)
+                    if count_shift != 0 :
+                        opd_est_amb = np.mean(x[idx_est_amb])
+                        opd_est_ptv = np.max(x[idx_est_amb])-np.min(x[idx_est_amb])
+                            
+                    i_amb += 1
+                
+                opd_est = opd_est_amb
+                
+            return opd_est*10**-9
+        else:
+            print,'No solution detected'
+            mask01 = mask0*mask1
+            mask02 = mask0*mask2
+            idx_est01 = (mask01).nonzero()	#
+            idx_est01 = idx_est01[0]
+            count_est01 = len(idx_est01)
+            idx_est02 = (mask02).nonzero()	#
+            idx_est02 = idx_est02[0]
+            count_est02 = len(idx_est02)
+          
+            if count_est01 > 0 :
+                opd_est01 = np.mean(x[idx_est01])
+                opd_est_ptv01 = np.max(x[idx_est01])-np.min(x[idx_est01])
+            else :
+                opd_est01 = 0
+                opd_est_ptv01 = 2*lambda0
+                
+            if count_est02 > 0 :
+                opd_est02 = np.mean(x[idx_est02])
+                opd_est_ptv02 = np.max(x[idx_est02])-np.min(x[idx_est02])
+            else :
+                opd_est02 = 0
+                opd_est_ptv02 = 2*lambda0
+            
+        
+            if opd_est_ptv01 < lambda0/2.: 
+                opd_est0102 = opd_est01 
+            else :
+                if opd_est_ptv02 < lambda0/2.: 
+                    opd_est0102 = opd_est02 
+                else :
+                    opd_est0102 = np.mean([opd_est01,opd_est02])
+            
+            #return,0
+            return opd_est0102*10**-9
     
     
     def pistonRetrival(self,sensor_measurement):
@@ -523,7 +693,7 @@ class Chan2(object):
         
         if self.sensorType==LIFT:
             
-            self.wfs.cameraNoise(self.RONval,0,self.excess_noise)
+            self.wfs.cameraNoise(self.RONval,self.background,self.excess_noise)
             currentPhaseEstimate, A_ML = self.wfs.phaseEstimation(self.wfs.frame, False, 1e-6, 1e-5)
             
             self.piston_estimate = A_ML[:6] @ self.R2m
@@ -535,7 +705,7 @@ class Chan2(object):
 
 if __name__ == '__main__':
     inputFolder = '/home/alcheffot/CEO/'
-    parametersFileName = 'paramsPyr1650'
+    parametersFileName = 'paramsLIFT1250-1600'
     
     c2 = Chan2(inputFolder,parametersFileName)
     c2.chan1wl = 715*10**-9
@@ -552,77 +722,77 @@ if __name__ == '__main__':
     gmt.project_truss_onaxis = False
     simul_truss_mask=False  # If True, it applies to closed loop simulation, and slope-null calibration only (NOT IM calibration)
     
-    c2.CalibAndRM(gmt)
+    # c2.CalibAndRM(gmt)
     
-    # segpist_signal_mask = gmt.NGWS_segment_piston_mask(c2.wfs, c2.gs)
-    # c2.D2m = c2.D2.copy()
-    # c2.D2m = gmt.NGWS_apply_segment_piston_mask(c2.D2m, segpist_signal_mask['mask'])
-    # c2.wfs.segpist_signal_mask = segpist_signal_mask
+    # # segpist_signal_mask = gmt.NGWS_segment_piston_mask(c2.wfs, c2.gs)
+    # # c2.D2m = c2.D2.copy()
+    # # c2.D2m = gmt.NGWS_apply_segment_piston_mask(c2.D2m, segpist_signal_mask['mask'])
+    # # c2.wfs.segpist_signal_mask = segpist_signal_mask
+    
+    # # gmt.reset()
+    # # c2.gs.reset()
+    # # c2.wfs.reset()
+    # # gmt.propagate(c2.gs)
+    # # c2.wfs.propagate(c2.gs)
+    
+    # # validSubApertureMap = np.abs(c2.wfs.get_sx2d())>0
+    # # vectorMask = c2.mask[0][validSubApertureMap]
+    
+    # #did the masking work
+    # seg = 2
+    # # toto,tata = c2.pyr_display_signals_base(c2.wfs,c2.D2m[:c2.wfs.n_sspp,seg],
+    # #                                         c2.D2m[c2.wfs.n_sspp:,seg],
+    # #                                         title = 'interaction matrix')
+    # # c2.pyr_display_signals_base(c2.wfs,c2.R2m[seg,:c2.wfs.n_sspp],
+    # #                             c2.R2m[seg,c2.wfs.n_sspp:],
+    # #                             title = 'reconstruction matrix' )
     
     # gmt.reset()
     # c2.gs.reset()
     # c2.wfs.reset()
+    # gmt.M2.modes.a[seg,0] =60*10**-9
+    # gmt.M2.modes.update()
     # gmt.propagate(c2.gs)
     # c2.wfs.propagate(c2.gs)
+    # # c2.wfs.frame*=150
+    # # c2.wfs.cameraNoise(0,0,1)
+    # c2.wfs.process(0.001)
+    # # c2.process()
+    # plt.figure(1)
+    # plt.clf()
+    # # plt.imshow(c2.wfs.frame-c2.wfs.referenceFrame)
+    # plt.imshow(c2.wfs.frame)
+    # # c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
+    # #                             title = 'signal')
     
-    # validSubApertureMap = np.abs(c2.wfs.get_sx2d())>0
-    # vectorMask = c2.mask[0][validSubApertureMap]
-    
-    #did the masking work
-    seg = 2
-    # toto,tata = c2.pyr_display_signals_base(c2.wfs,c2.D2m[:c2.wfs.n_sspp,seg],
-    #                                         c2.D2m[c2.wfs.n_sspp:,seg],
-    #                                         title = 'interaction matrix')
-    # c2.pyr_display_signals_base(c2.wfs,c2.R2m[seg,:c2.wfs.n_sspp],
-    #                             c2.R2m[seg,c2.wfs.n_sspp:],
-    #                             title = 'reconstruction matrix' )
-    
-    gmt.reset()
-    c2.gs.reset()
-    c2.wfs.reset()
-    gmt.M2.modes.a[seg,0] =60*10**-9
-    gmt.M2.modes.update()
-    gmt.propagate(c2.gs)
-    c2.wfs.propagate(c2.gs)
-    # c2.wfs.frame*=150
-    # c2.wfs.cameraNoise(0,0,1)
-    c2.wfs.process(0.001)
-    # c2.process()
-    plt.figure(1)
-    plt.clf()
-    # plt.imshow(c2.wfs.frame-c2.wfs.referenceFrame)
-    plt.imshow(c2.wfs.frame)
-    # c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
-    #                             title = 'signal')
-    
-    #sweep test
-    # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
-    # wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
-    piston = np.linspace(-1500,1500,121)*10**-9
-    seg = 1
+    # #sweep test
+    # # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
+    # # wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
+    # piston = np.linspace(-715,715,21)*10**-9
+    # seg = 1
 
-    recall = []
-    recmwl = []
-    for p in piston:
-        c2.gs.reset()
-        gmt.reset()
-        gmt.M2.modes.a[seg,0] =p
-        gmt.M2.modes.update()
-        c2.wfs.reset()
-        gmt.propagate(c2.gs)
-        c2.wfs.propagate(c2.gs)
-        # c2.wfs.frame*=150
-        c2.process()
-        # measvec = c2.wfs.get_measurement()
-        # rec = c2.R2m @ measvec
-        rec = c2.piston_estimate
-        recall.append(rec[seg])
-        # if p in wlmult:
-        #     recmwl.append(rec[seg])
+    # recall = []
+    # recmwl = []
+    # for p in piston:
+    #     c2.gs.reset()
+    #     gmt.reset()
+    #     gmt.M2.modes.a[seg,0] =p
+    #     gmt.M2.modes.update()
+    #     c2.wfs.reset()
+    #     gmt.propagate(c2.gs)
+    #     c2.wfs.propagate(c2.gs)
+    #     c2.wfs.frame*=150
+    #     c2.process()
+    #     # measvec = c2.wfs.get_measurement()
+    #     # rec = c2.R2m @ measvec
+    #     rec = c2.piston_estimate
+    #     recall.append(rec[seg])
+    #     # if p in wlmult:
+    #     #     recmwl.append(rec[seg])
     
-    plt.figure(2)
-    plt.clf()
-    plt.plot(piston,recall)
+    # plt.figure(2)
+    # plt.clf()
+    # plt.plot(piston,recall)
     # plt.plot(wlmult,recmwl,'o' )
     
     

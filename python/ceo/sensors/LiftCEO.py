@@ -41,11 +41,11 @@ class LiftCEO(LIFT):
     
     
     
-    def __init__(self,path , parametersFile):
+    def __init__(self,path , parametersFile,sectionName='lift'):
         """
         initialise the basic parameters and array needed
         """
-        super().__init__( path = path, parametersFile = parametersFile)
+        super().__init__( path = path, parametersFile = parametersFile, sectionName = sectionName)
         self.nPix = self.gridSize 
         # self.mask = self.CEOcompa(pupilMask)
         # self.mask = pupilMask.copy()
@@ -81,7 +81,7 @@ class LiftCEO(LIFT):
 
         tmpFrame = self.focalPlaneImageLIFTAberration(phase)
         # tmpFrame *= nPhotPerMs
-        tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)
+        tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)*2
         self.frame += tmpFrame
 
         return phase

@@ -26,6 +26,7 @@ import poppy
 
 #----- Visualization
 import matplotlib.pyplot as plt
+from astropy.io import fits
 
 # .ini file parsing
 from configparser import ConfigParser,NoOptionError
@@ -1491,8 +1492,16 @@ class NGAO(object):
 
             #----- On-axis WFS measurement ---------------------------------------------------
             self.gmt.propagate(self.gs)
+            # hdu = fits.PrimaryHDU(self.gs.phase.host())
+            # hdul = fits.HDUList(hdu)
+            # hdul.writeto('/raid1/gmt_data/CEO/turb_phasescreens/seeing0-968/atmresidual-{}.fits'
+            #              .format(jj))
             if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
                 self.gmt.propagate(self.chan2.gs)
+                # hdu = fits.PrimaryHDU(self.chan2.gs.phase.host())
+                # hdul = fits.HDUList(hdu)
+                # hdul.writeto('/raid1/gmt_data/CEO/turb_phasescreens/seeing0-968Chan2-nLenslet{:.0f}/atmresidual-{}.fits'
+                #              .format(self.chan2.nLenslet,jj))
 
             if self.do_Phase_integration:
                 if jj >= PhIntInit:
