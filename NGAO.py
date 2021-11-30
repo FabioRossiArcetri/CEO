@@ -222,10 +222,21 @@ class NGAO(object):
             
             
             #Initialise the the second channel
-            self.chan2 = Chan2(path, parametersFile)
-            if self.chan2.sensorType.lower() =='idealpistonsensor':
+            self.secondChannelType = eval(parser.get('2ndChan', 'sensorType'))
+            
+            if self.secondChannelType == 'lift':
+                sectionName = eval(parser.get('2ndChan','liftSectionName' ))
                 
+                self.doubleChan2 = [ Chan2(path, parametersFile,sectionName[0],0),
+                              Chan2(path, parametersFile,sectionName[1],1)]
+                self.chan2 = self.doubleChan2[0]
+                self.doubleChan2[0].chan1wl = self.gs.wavelength
+                self.doubleChan2[1].chan1wl = self.gs.wavelength
+            elif self.secondChannelType == 'idealpistonsensor':
+                self.chan2 =Chan2(path, parametersFile)
                 self.onps = ceo.IdealSegmentPistonSensor(self.D, self.nPx, segment='full')
+            else:
+                self.chan2 = Chan2(path, parametersFile)
     
                 # self.gs.reset()
                 # self.gmt.reset()
@@ -241,9 +252,8 @@ class NGAO(object):
                 # self.KL0_idx = self.n_mode*np.array([0,1,2,3,4,5])
                 # self.R_M2_PSideal = np.linalg.pinv(self.D_M2_PSideal)#ideal phasing sensor reconstructor
                 # self.SPP2ndCh_thr = self.gs.wavelength * 0.95#detection threshold for the second channel
-            else:
                 
-                self.chan2.chan1wl = self.gs.wavelength
+                
                         
         if self.simul_turb:
             self.atm_duration = eval(parser.get('turbulence', 'screenDuration'))
@@ -1159,8 +1169,11 @@ class NGAO(object):
         
         self.generalizedIMInverse(figsize = figsize)
         self.addRowsOfRemovedModes(figsize = figsize)
-        if self.chan2.sensorType.lower() == 'idealpistonsensor':
+        if self.secondChannelType ==  'idealpistonsensor':
             self.idealPistonSensor(figsize = figsize)
+        elif self.secondChannelType == 'lift':
+            self.doubleChan2[0].CalibAndRM(self.gmt,figsize = figsize)
+            self.doubleChan2[1].CalibAndRM(self.gmt,figsize = figsize)
         else:
             self.chan2.CalibAndRM(self.gmt,figsize = figsize)
         
@@ -1411,18 +1424,34 @@ class NGAO(object):
             psf_range_mas = np.array([-900, 900]) # +/- 1 arcsec
             psf_range_pix = np.rint(psf_range_mas/self.fp_pixscale + self.nPx*self.npad/2).astype(int)
             
-        self.chan2.pistEstList = []
         self.ogtl_fitcoef = []
-        if dbg:
-            self.chan2.correctionList = []
-            self.chan2.debugframe = []
+        if self.secondChannelType =='lift':
+            self.doubleChan2[0].pistEstList = []
+            self.doubleChan2[0].correctionList = []
+            if dbg:
+                
+                self.doubleChan2[0].debugframe = []
+            self.doubleChan2[1].pistEstList = []
+            
+            self.doubleChan2[1].correctionList = []
+            if dbg:
+                self.doubleChan2[1].debugframe = []
+        else:
+            self.chan2.pistEstList = []
+            if dbg:
+                self.chan2.correctionList = []
+                self.chan2.debugframe = []
             
         
         for jj in range(self.totSimulIter):
             self.tid.tic()
             self.gs.reset()
-            if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+            if self.secondChannelType == 'lift':
+                self.doubleChan2[0].gs.reset()
+                self.doubleChan2[1].gs.reset()
+            elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                 self.chan2.gs.reset()
+                
 
             #----- Update Turbulence --------------------------------------------
             if self.simul_turb:
@@ -1433,7 +1462,15 @@ class NGAO(object):
                         self.r0_iter[jj] = self.atm.r0
                 self.atm.ray_tracing(self.gs, self.pixelSize,self.nPx,self.pixelSize,
                                      self.nPx, self.atm_t0+(jj*self.Tsim))
-                if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+                if self.secondChannelType == 'lift':
+                    self.atm.ray_tracing(self.doubleChan2[0].gs, self.doubleChan2[0].pixelSize,
+                                         self.doubleChan2[0].nPx,self.doubleChan2[0].pixelSize,
+                                         self.doubleChan2[0].nPx, self.atm_t0+(jj*self.Tsim))
+                    self.atm.ray_tracing(self.doubleChan2[1].gs, self.doubleChan2[1].pixelSize,
+                                         self.doubleChan2[1].nPx,self.doubleChan2[1].pixelSize,
+                                         self.doubleChan2[1].nPx, self.atm_t0+(jj*self.Tsim))
+
+                elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                     self.atm.ray_tracing(self.chan2.gs, self.chan2.pixelSize,
                                          self.chan2.nPx,self.chan2.pixelSize,
                                          self.chan2.nPx, self.atm_t0+(jj*self.Tsim))
@@ -1496,12 +1533,16 @@ class NGAO(object):
             # hdul = fits.HDUList(hdu)
             # hdul.writeto('/raid1/gmt_data/CEO/turb_phasescreens/seeing0-968/atmresidual-{}.fits'
             #              .format(jj))
-            if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+            if self.secondChannelType == 'lift':
+                self.gmt.propagate(self.doubleChan2[0].gs)
+                self.gmt.propagate(self.doubleChan2[1].gs)
+            
+            elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                 self.gmt.propagate(self.chan2.gs)
-                # hdu = fits.PrimaryHDU(self.chan2.gs.phase.host())
+                # hdu = fits.PrimaryHDU(self.chan2[0].gs.phase.host())
                 # hdul = fits.HDUList(hdu)
                 # hdul.writeto('/raid1/gmt_data/CEO/turb_phasescreens/seeing0-968Chan2-nLenslet{:.0f}/atmresidual-{}.fits'
-                #              .format(self.chan2.nLenslet,jj))
+                #              .format(self.chan2[0].nLenslet,jj))
 
             if self.do_Phase_integration:
                 if jj >= PhIntInit:
@@ -1605,7 +1646,11 @@ class NGAO(object):
                     self.ogtl_ogc_centr_iter.append(self.ogtl_ogc_allmodes_centr.copy())
                     
                     #passing the ogc to the second channel for extrapolation
-                    self.chan2.OGTL(self.ogtl_ogc_allmodes_outer,self.gs.wavelength)
+                    if self.secondChannelType == 'lift':
+                        self.doubleChan2[0].OGTL(self.ogtl_ogc_allmodes_outer,self.gs.wavelength)
+                        self.doubleChan2[1].OGTL(self.ogtl_ogc_allmodes_outer,self.gs.wavelength)
+                    else:
+                        self.chan2.OGTL(self.ogtl_ogc_allmodes_outer,self.gs.wavelength)
 
                     
 
@@ -1632,7 +1677,7 @@ class NGAO(object):
                 
                 # self.phres_cube.append(self.gs.phase.host())
                 if jj == self.SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
-                    if self.fake_fast_spp_convergence and self.chan2.sensorType.lower()=='idealpistonsensor':
+                    if self.fake_fast_spp_convergence and self.secondChannelType=='idealpistonsensor':
                         self.onps.reset()
                         self.onps.analyze(self.gs)
                         pistjumps_est = self.onps.get_measurement()
@@ -1642,8 +1687,12 @@ class NGAO(object):
                         self.onps.reset()
                         # print('comm_buffer when jj == self.SPP2ndChInit')
                         # print(comm_buffer)
-                    
-                    if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+                    if self.secondChannelType == 'lift':
+                        self.doubleChan2[0].wfs.reset()
+                        self.doubleChan2[1].wfs.reset()
+                        self.doubleChan2[0].propagate()
+                        self.doubleChan2[1].propagate()
+                    elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                         self.chan2.wfs.reset()
                         self.chan2.propagate()
 
@@ -1653,7 +1702,7 @@ class NGAO(object):
                         
                 elif jj > self.SPP2ndChInit:
                     if self.SPP2ndCh_count == self.SPP2ndCh_Ts-1:# every time the counter reaches the exposure time for the second channel
-                        if self.chan2.sensorType.lower() == 'idealpistonsensor':
+                        if self.secondChannelType == 'idealpistonsensor':
                             self.onps.analyze(self.gs)
                             pistjumps_est = self.onps.get_measurement()
                             pistjumps_est -= pistjumps_est[6]
@@ -1669,7 +1718,32 @@ class NGAO(object):
                             # print(comm_buffer)
                             
                             self.onps.reset()
-                        if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+                        if self.secondChannelType == 'lift':
+                            self.doubleChan2[0].process(dbg = dbg,figsize=figsize)
+                            self.doubleChan2[0].pistEstTime.append(jj)
+                            self.doubleChan2[0].pistEstList.append(self.doubleChan2[0].piston_estimate)
+                            self.doubleChan2[1].process(dbg = dbg,figsize=figsize)
+                            self.doubleChan2[1].pistEstTime.append(jj)
+                            self.doubleChan2[1].pistEstList.append(self.doubleChan2[1].piston_estimate)
+
+                            chan1converge = np.array([a*self.gs.wavelength for a in range(-3,4)])
+                            tolerence = 50*10**-9
+                            aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
+                            for ss in range(self.nseg-1):
+                                self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est3(self.gs.wavelength,
+                                                                                      self.doubleChan2[0].cwl,
+                                                                                      self.doubleChan2[1].cwl,
+                                                                                      self.doubleChan2[0].piston_estimate[ss],
+                                                                                      self.doubleChan2[1].piston_estimate[ss],
+                                                                                      # apriori = aprio.copy()
+                                                                                      )
+                            comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
+                            
+                            self.doubleChan2[0].correctionList.append(self.doubleChan2[0].forCorrection.copy())
+                            self.doubleChan2[0].wfs.reset()
+                            self.doubleChan2[1].wfs.reset()
+                        
+                        elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                             #TODO
                             self.chan2.process(dbg = dbg,figsize=figsize)
                             self.chan2.pistEstTime.append(jj)
@@ -1687,9 +1761,12 @@ class NGAO(object):
                             
                         self.SPP2ndCh_count=0
                     else:
-                        if self.chan2.sensorType.lower() == 'idealpistonsensor':
+                        if self.secondChannelType == 'idealpistonsensor':
                             self.onps.propagate(self.gs)
-                        if self.chan2.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
+                        elif self.secondChannelType == 'lift':
+                            self.doubleChan2[0].propagate()
+                            self.doubleChan2[1].propagate()
+                        elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
                             self.chan2.propagate()
                             
                         self.SPP2ndCh_count+=1
@@ -1922,6 +1999,13 @@ class NGAO(object):
             del dic2save[k]
         tosave.update(dic2save)
         
+        if self.secondChannelType=='lift':
+            dic2save = { x : self.doubleChan2[1].__dict__[x] for x in self.doubleChan2[1].__dict__.keys() if x not in notsaveKeys}
+            tmpkeys = copy.deepcopy(dic2save)
+            for k in tmpkeys.keys():
+                dic2save['chan2_sec'+k] = dic2save[k]
+                del dic2save[k]
+            tosave.update(dic2save)
         
         
 
@@ -2059,6 +2143,15 @@ class NGAO(object):
             self.chan2.pistEstTime = data['chan2pistEstTime']
             self.chan2.pistEstList = data['chan2pistEstList']
             self.chan2.ogc_iter = data['chan2ogc_iter']
+            self.chan2.correctionList = data['chan2correctionList' ]
+            self.chan2.gs2segPistErr = data['chan2gs2segPistErr']
+            self.chan2.gs2wfe = data['chan2gs2wfe']
+            if self.secondChannelType == 'lift':
+                self.doubleChan2[1].pistEstTime = data['chan2_secpistEstTime']
+                self.doubleChan2[1].pistEstList = data['chan2_secpistEstList']
+                self.doubleChan2[1].ogc_iter = data['chan2_secogc_iter']
+                self.doubleChan2[1].gs2segPistErr = data['chan2_secgs2segPistErr']
+                self.doubleChan2[1].gs2wfe = data['chan2_secgs2wfe']
 
             if 'srle' in data:
                 self.srle = data['srle']

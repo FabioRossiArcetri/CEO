@@ -44,7 +44,7 @@ def rebin(arr, new_shape):
 class Chan2(object):
     """object meant to wrap everything the second channel may do"""
     
-    def __init__(self,path,parametersFile):
+    def __init__(self,path,parametersFile,sectionName = '',sensorId = 0):
         parser = ConfigParser()
         parser.read(path + parametersFile + '.ini')
         
@@ -61,11 +61,11 @@ class Chan2(object):
         self.VISU = eval(parser.get('general', 'VISU'))
         self.simul_truss_mask = eval(parser.get('telescope', 'simul_truss_mask'))
         self.nseg = eval(parser.get('telescope','nseg'))
-        self.active_corr = eval(parser.get('2ndChan', 'active_corr'))
+        self.active_corr = eval(parser.get('2ndChan', 'active_corr'))[sensorId]
         try:
-            self.rescaleAtmResidual = eval(parser.get('2ndChan', 'rescale_atm_residual'))
+            self.rescaleAtmResidual = eval(parser.get('2ndChan', 'rescale_atm_residual'))[sensorId]
             if self.rescaleAtmResidual:
-                self.rescaleTo = eval(parser.get('2ndChan', 'rescale_to'))
+                self.rescaleTo = eval(parser.get('2ndChan', 'rescale_to'))[sensorId]
                 self.rescaleFactor = 1
                 print('second channel atmospheric residuals will be rescaled to {} nm'
                       .format(self.rescaleTo*10**9))
@@ -75,49 +75,49 @@ class Chan2(object):
             self.rescaleFactor = 1
         
         #addition of parameters for the second channel: first the second channel source parameters
-        self.cwl = eval(parser.get('2ndChan', 'wavelength2'))
-        self.band = eval(parser.get('2ndChan', 'delta_wavelength2'))
-        self.e0_inband = eval(parser.get('2ndChan', 'e0_inClosestBand'))
-        self.band_inband = eval(parser.get('2ndChan', 'deltaWavelength_ClosestBand'))
-        self.mag = eval(parser.get('2ndChan', 'mag'))
+        self.cwl = eval(parser.get('2ndChan', 'wavelength2'))[sensorId]
+        self.band = eval(parser.get('2ndChan', 'delta_wavelength2'))[sensorId]
+        self.e0_inband = eval(parser.get('2ndChan', 'e0_inClosestBand'))[sensorId]
+        self.band_inband = eval(parser.get('2ndChan', 'deltaWavelength_ClosestBand'))[sensorId]
+        self.mag = eval(parser.get('2ndChan', 'mag'))[sensorId]
         self.e0 = self.e0_inband * (self.band/self.band_inband) / eval(parser.get('telescope', 'PupilArea'))    #in ph/m^2/s in the desired bandwidth
-        self.throughput =  eval(parser.get('2ndChan','throughput'))  # NGWS board: 0.4
-        self.detQE = eval(parser.get('2ndChan','detectorQE'))
+        self.throughput =  eval(parser.get('2ndChan','throughput'))[sensorId]  # NGWS board: 0.4
+        self.detQE = eval(parser.get('2ndChan','detectorQE'))[sensorId]
         #setup of the parameters for the sensor itself.
         self.sensorType = eval(parser.get('2ndChan', 'sensorType'))
-        self.RONval = eval(parser.get('2ndChan','RONval'))                # e- RMS
+        self.RONval = eval(parser.get('2ndChan','RONval'))[sensorId]                # e- RMS
         try:
-            self.background = eval(parser.get('2ndChan','background'))
+            self.background = eval(parser.get('2ndChan','background'))[sensorId]
         except NoOptionError:
             self.background = 0
-        self.pyr_angle = eval(parser.get('2ndChan','pyr_angle'))         # angle between pyramid facets and GMT pupil (in deg)
-        self.detthr = eval(parser.get('2ndChan','detthr'))
+        self.pyr_angle = eval(parser.get('2ndChan','pyr_angle'))[sensorId]         # angle between pyramid facets and GMT pupil (in deg)
+        self.detthr = eval(parser.get('2ndChan','detthr'))[sensorId]
         
         # initialisation of the second channel wavefront sensor
         if self.sensorType.lower() == 'idealpistonsensor':
-            self.pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))
-            self.nLenslet = eval(parser.get('2ndChan','nLenslet'))//self.pyr_binning            # sub-apertures across the pupil
-            self.nPx = self.nLenslet*eval(parser.get('2ndChan','nPx'))
+            self.pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))[sensorId]
+            self.nLenslet = eval(parser.get('2ndChan','nLenslet'))[sensorId]//self.pyr_binning            # sub-apertures across the pupil
+            self.nPx = self.nLenslet*eval(parser.get('2ndChan','nPx'))[sensorId]
             print('initialised elsewhere in the code')
             
         if self.sensorType.lower() == PYRAMID_SENSOR:
-            self.pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))
-            self.nLenslet = eval(parser.get('2ndChan','nLenslet'))//self.pyr_binning            # sub-apertures across the pupil
-            self.nPx = self.nLenslet*eval(parser.get('2ndChan','nPx'))
-            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))
-            self.pyr_separation = eval(parser.get('2ndChan','pyr_separation'))//self.pyr_binning     # separation between centers of adjacent sub-pupil images on the detector [pix]
-            self.pyr_modulation = eval(parser.get('2ndChan','pyr_modulation'))     # modulation radius in lambda/D units
-            self.pyr_fov = eval(parser.get('2ndChan','pyr_fov'))               # arcsec in diameter
+            self.pyr_binning = eval(parser.get('2ndChan', 'pyr_binning'))[sensorId]
+            self.nLenslet = eval(parser.get('2ndChan','nLenslet'))[sensorId]//self.pyr_binning            # sub-apertures across the pupil
+            self.nPx = self.nLenslet*eval(parser.get('2ndChan','nPx'))[sensorId]
+            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))[sensorId]
+            self.pyr_separation = eval(parser.get('2ndChan','pyr_separation'))[sensorId]//self.pyr_binning     # separation between centers of adjacent sub-pupil images on the detector [pix]
+            self.pyr_modulation = eval(parser.get('2ndChan','pyr_modulation'))[sensorId]     # modulation radius in lambda/D units
+            self.pyr_fov = eval(parser.get('2ndChan','pyr_fov'))[sensorId]               # arcsec in diameter
             
-            self.excess_noise = np.sqrt(eval(parser.get('2ndChan','excess_noise'))) # EMCCD excess noise factor
+            self.excess_noise = np.sqrt(eval(parser.get('2ndChan','excess_noise')))[sensorId] # EMCCD excess noise factor
             
             #--- 2nd channel specific parameters:  NOTE: Leave the blocking mask initialized to zero in order to do initial calibrations!!!
             self.blocking_mask_diam_forcalib = 0.
-            self.blocking_mask_diam = eval(parser.get('2ndChan','blocking_mask_diam')) # in lambda/D units where lambda=gs.wavelength (see gs definition below)
+            self.blocking_mask_diam = eval(parser.get('2ndChan','blocking_mask_diam'))[sensorId] # in lambda/D units where lambda=gs.wavelength (see gs definition below)
             
             #Parameters for later calibration
-            self.pyr_thr = eval(parser.get('2ndChan','pyr_thr'))
-            self.percent_extra_subaps = eval(parser.get('2ndChan','percent_extra_subaps'))
+            self.pyr_thr = eval(parser.get('2ndChan','pyr_thr'))[sensorId]
+            self.percent_extra_subaps = eval(parser.get('2ndChan','percent_extra_subaps'))[sensorId]
             
             self.wfs = ceo.Pyramid(self.nLenslet, self.nPx, 
                                          modulation=self.pyr_modulation, 
@@ -126,24 +126,24 @@ class Chan2(object):
                                          high_pass_diam=self.blocking_mask_diam_forcalib)
             if self.pyr_modulation == 1.0: self.wfs.modulation_sampling = 16
             
-            self.applySignalMasking = eval(parser.get('2ndChan','applySignalMasking'))
+            self.applySignalMasking = eval(parser.get('2ndChan','applySignalMasking'))[sensorId]
             if self.applySignalMasking == 'custom':
-                self.path2sigstd = eval(parser.get('2ndChan','path2stdSig'))
-                self.maskthr = eval(parser.get('2ndChan','maskThr'))
+                self.path2sigstd = eval(parser.get('2ndChan','path2stdSig'))[sensorId]
+                self.maskthr = eval(parser.get('2ndChan','maskThr'))[sensorId]
          
             
         elif self.sensorType.lower()==PHASE_CONTRAST_SENSOR:
             
             try :
-                self.nLenslet = eval(parser.get('2ndChan','nLenslet'))
+                self.nLenslet = eval(parser.get('2ndChan','nLenslet'))[sensorId]
             except NoOptionError:
                 self.nLenslet = 1
-            self.nPx = eval(parser.get('2ndChan','nPx'))*self.nLenslet
-            self.phaseMaskDiam = eval(parser.get('2ndChan','phaseMaskDiameter'))
-            self.phaseMaskDelay = eval(parser.get('2ndChan','phaseMaskDelay'))
-            self.poppyOversampling = eval(parser.get('2ndChan','poppyOversampling'))
-            self.gmtCalib = eval(parser.get('2ndChan','gmtStandardCalibration'))
-            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))
+            self.nPx = eval(parser.get('2ndChan','nPx'))[sensorId]*self.nLenslet
+            self.phaseMaskDiam = eval(parser.get('2ndChan','phaseMaskDiameter'))[sensorId]
+            self.phaseMaskDelay = eval(parser.get('2ndChan','phaseMaskDelay'))[sensorId]
+            self.poppyOversampling = eval(parser.get('2ndChan','poppyOversampling'))[sensorId]
+            self.gmtCalib = eval(parser.get('2ndChan','gmtStandardCalibration'))[sensorId]
+            self.applyOgc = eval(parser.get('2ndChan', 'applyOgc'))[sensorId]
             self.wfs = ceo.sensors.phaseContrastSensor(self.phaseMaskDiam,
                                                      self.phaseMaskDelay,
                                                      self.cwl,
@@ -152,21 +152,22 @@ class Chan2(object):
                                                      poppyOverSampling = self.poppyOversampling)
             self.wfs.fitsPhaseFileName = 'gmtPhase{}.fits'.format(eval(parser.get('general', 'GPUnum')))
             self.wfs.fitsPupilFileName = 'GMTPupil{}.fits'.format(eval(parser.get('general', 'GPUnum')))
-            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))
+            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))[sensorId]
+            self.PSstroke = eval(parser.get('2ndChan', 'PSstroke'))[sensorId]
+            self.wvl_fraction = eval(parser.get('2ndChan', 'wvl_fraction'))[sensorId]
             
         elif self.sensorType.lower() == LIFT:
-            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))
-            self.wfs = ceo.sensors.LiftCEO( path, parametersFile)
+            self.excess_noise = eval(parser.get('2ndChan','excess_noise'))[sensorId]
+            self.wfs = ceo.sensors.LiftCEO( path, parametersFile,sectionName)
             
             self.nPx = self.wfs.gridSize
-            self.cwl = self.wfs.lambdaValue*10**-9
+            # self.cwl = self.wfs.lambdaValue*10**-9
             
         else:
             print('sensor not supported, assuming an ideal piston sensor' )
         
         self.pixelSize = eval(parser.get('telescope', 'D'))/self.nPx        # pixel size [m/pix]
-        self.PSstroke = eval(parser.get('2ndChan', 'PSstroke'))
-        self.wvl_fraction = eval(parser.get('2ndChan', 'wvl_fraction'))
+        
         self.exposure_time = eval(parser.get('2ndChan','exposureTime'))
         
         if self.sensorType.lower() in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR,LIFT]:
@@ -481,7 +482,7 @@ class Chan2(object):
         
         
     
-    def piston_est3(lambda0,lambda1,lambda2,s1,s2,
+    def piston_est3(self,lambda0,lambda1,lambda2,s1,s2,
                 span = [-3000*10**-9,3000*10**-9],# nm
                 amp_conf = 0.1, # seuil de confiance
                 apriori = np.array([[-3000*10**-9, 3000*10**-9]]), # tableau 2*n (n le nombre d'intervalles a considere pour 0
@@ -531,7 +532,7 @@ class Chan2(object):
         
     
         if np.abs(s1) < .05 and np.abs(s2) < .05 :
-            print('Signals < 0.05, returning 0')
+            # print('Signals < 0.05, returning 0')
             return 0
         
         
@@ -583,7 +584,7 @@ class Chan2(object):
             opd_est = np.mean(x[idx_est])
             opd_est_ptv = np.max(x[idx_est])-np.min(x[idx_est])
             if opd_est_ptv > lambda0/2. :
-                print,'Ambiguous estimation'
+                # print,'Ambiguous estimation'
                 i_amb = 1
                 while opd_est_ptv > lambda0/2. :
                     mask_shift = mask*np.roll(mask,i_amb)
@@ -600,7 +601,7 @@ class Chan2(object):
                 
             return opd_est*10**-9
         else:
-            print,'No solution detected'
+            # print,'No solution detected'
             mask01 = mask0*mask1
             mask02 = mask0*mask2
             idx_est01 = (mask01).nonzero()	#
@@ -694,12 +695,14 @@ class Chan2(object):
         if self.sensorType==LIFT:
             
             self.wfs.cameraNoise(self.RONval,self.background,self.excess_noise)
+            self.fluxEst = np.sum(self.wfs.frame)
             currentPhaseEstimate, A_ML = self.wfs.phaseEstimation(self.wfs.frame, False, 1e-6, 1e-5)
             
             self.piston_estimate = A_ML[:6] @ self.R2m
-            self.piston_estimate *= self.gs.wavelength/(2*np.pi)
-            self.forCorrection = self.pistonRetrival(self.piston_estimate)
-        
+            # self.piston_estimate *= self.gs.wavelength/(2*np.pi)
+            self.piston_estimate = np.arctan(np.tan(self.piston_estimate/2))*2/np.pi
+            # self.forCorrection = self.pistonRetrival(self.piston_estimate)
+            
         if not(self.active_corr):
             self.forCorrection *= 0
 

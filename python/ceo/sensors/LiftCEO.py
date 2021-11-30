@@ -79,9 +79,9 @@ class LiftCEO(LIFT):
         #this is a fix for some reusing of variable in lift that should not happen
         self.roi_tip, self.roi_tilt = self.radians_per_pixel/2, self.radians_per_pixel/2
 
-        tmpFrame = self.focalPlaneImageLIFTAberration(phase)
+        tmpFrame = self.focalPlaneImageLIFT(phase)
         # tmpFrame *= nPhotPerMs
-        tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)*2
+        tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)
         self.frame += tmpFrame
 
         return phase
