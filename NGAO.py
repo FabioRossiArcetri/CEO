@@ -1726,7 +1726,7 @@ class NGAO(object):
                             self.doubleChan2[1].pistEstTime.append(jj)
                             self.doubleChan2[1].pistEstList.append(self.doubleChan2[1].piston_estimate)
 
-                            chan1converge = np.array([a*self.gs.wavelength for a in range(-3,4)])
+                            chan1converge = np.array([a*self.gs.wavelength for a in range(-7,8)])
                             tolerence = 50*10**-9
                             aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
                             for ss in range(self.nseg-1):
@@ -1735,9 +1735,10 @@ class NGAO(object):
                                                                                       self.doubleChan2[1].cwl,
                                                                                       self.doubleChan2[0].piston_estimate[ss],
                                                                                       self.doubleChan2[1].piston_estimate[ss],
-                                                                                      # apriori = aprio.copy()
+                                                                                       apriori = aprio.copy()
                                                                                       )
-                            comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
+                            if self.chan2.active_corr:
+                                comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
                             
                             self.doubleChan2[0].correctionList.append(self.doubleChan2[0].forCorrection.copy())
                             self.doubleChan2[0].wfs.reset()

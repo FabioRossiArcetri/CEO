@@ -483,9 +483,9 @@ class Chan2(object):
         
     
     def piston_est3(self,lambda0,lambda1,lambda2,s1,s2,
-                span = [-3000*10**-9,3000*10**-9],# nm
-                amp_conf = 0.1, # seuil de confiance
-                apriori = np.array([[-3000*10**-9, 3000*10**-9]]), # tableau 2*n (n le nombre d'intervalles a considere pour 0
+                span = [-5000*10**-9,5000*10**-9],# nm
+                amp_conf = 0.05, # seuil de confiance
+                apriori = None, # tableau 2*n (n le nombre d'intervalles a considere pour 0
                 lift = True, #on utilise lift
                 zm = False):#on utilise le zernike
         """
@@ -528,7 +528,10 @@ class Chan2(object):
         lambda1*=10**9
         lambda2*=10**9
         span = [a*10**9 for a in span]
-        apriori *= 10**9
+        if apriori is None:
+            apriori = np.array([span.copy()])
+        else:
+            apriori *= 10**9
         
     
         if np.abs(s1) < .05 and np.abs(s2) < .05 :
