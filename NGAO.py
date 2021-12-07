@@ -60,6 +60,41 @@ def poly_nomial(x, coefs):
         y += coefs[k] * x**(deg-k)
     return y
 
+#------ Functions below required for OMGI
+from scipy import optimize
+
+def rejectTF(gi, nu, Te, tau, ffi):
+    return 1 / ( 1 + olTF(gi,nu,Te,tau,ffi))
+
+#-- Detector or Sample-and-Hold TF:
+def Itf(nu, Te):
+    red = 1j*nu*(2*np.pi*Te)
+    return (1 - np.exp(-red)) / red
+
+#-- Pure delay TF: 
+def Dtf(nu, tau):
+    return np.exp(-1j*nu*(2*np.pi*tau))
+
+
+#-- Leaky integrator controller:
+def Ctf(gi, nu, Te, ffi):
+    return gi / (1 - ffi*np.exp(-1j*nu*(2*np.pi*Te)))
+
+#-- ASM response:
+def ASMtf(nu):
+    #fz = 800.;
+    #dz = 0.75;
+    #s = complex(0, 2*pi*nu);
+    #(2*pi*fz)^2 ./ ( s.^2 + (4*pi*dz*fz).*s + (2*pi*fz)^2 );
+    return 1
+
+#-- Open-loop TF:
+def olTF(gi, nu, Te, tau, ffi):
+    return Itf(nu, Te)**2 * Dtf(nu, tau) * Ctf(gi, nu, Te, ffi);
+    #return ASMtf(nu) .* Itf(nu, Te).^2 .* Dtf(nu,tau) .* Ctf(gi, nu, Te);
+    
+
+
 class NGAO(object):
     def __init__(self, path, parametersFile):
         self.tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
@@ -717,6 +752,29 @@ class NGAO(object):
                 clb.ax.tick_params(labelsize=12)
                 plt.show()
 
+
+    def dessenne_gain(self, fvec, a_OLCL_psd, figsize = (15,5)):
+
+        def modalrms(gi, Ts, Td, ffi):
+            absRTF2 = np.abs(rejectTF(gi, freq_vec, Ts, Td, ffi))**2
+            resvari = np.sum(absRTF2 * ol_psd) * delta_freq_Hz
+            return np.sqrt(resvari)*1e9
+
+        nseg = a_OLCL_psd.shape[0]
+        nmodes = a_OLCL_psd.shape[1]
+        delta_freq_Hz = fvec[2]-fvec[1]
+        freq_vec = fvec[1:]   # remove zero-frequency
+
+        optgain = np.zeros((nseg,nmodes))
+        for this_seg in range(nseg):
+            for this_mode in range(nmodes):
+                ol_psd = a_OLCL_psd[this_seg,this_mode,1:]  # remove zero-frequency
+                ffi = self.ffAO.get()[this_seg*self.n_mode+this_mode]
+                optres = optimize.minimize_scalar(modalrms, bounds=(0,0.5), method='bounded', args=(self.Tsim,self.Tsim,ffi))
+                if optres.success==True:
+                    optgain[this_seg,this_mode]=optres.x
+        return optgain
+    
 
     def update_r0(self, t):
         self.varseeing_iter = (self.seeing_max-self.seeing_init)*np.sin(2*np.pi*t/self.vs_T)+ self.seeing_init
