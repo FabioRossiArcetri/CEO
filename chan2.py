@@ -484,7 +484,7 @@ class Chan2(object):
     
     def piston_est3(self,lambda0,lambda1,lambda2,s1,s2,
                 span = [-5000*10**-9,5000*10**-9],# nm
-                amp_conf = 0.05, # seuil de confiance
+                amp_conf = 0.1, # seuil de confiance
                 apriori = None, # tableau 2*n (n le nombre d'intervalles a considere pour 0
                 lift = True, #on utilise lift
                 zm = False):#on utilise le zernike
