@@ -1375,24 +1375,24 @@ class NGAO(object):
             self.wlstartInit = 0      
 
         if self.ogtl_simul:
-            probeSigInit = AOinit+self.SPP2ndChInit #SPPctrlInit+9          # Start injection probe signals on selected modes 
+            probeSigInit = AOinit+round(0.25/self.Tsim) #SPPctrlInit+9          # Start injection probe signals on selected modes 
             # ogtl_Ts_1 = 500e-3 # sampling during bootstrap [s]
             ogtl_sz = np.int(self.ogtl_Ts /self.Tsim)
             ogtl_count = 0
             # self.ogtl_detrend_deg = 5   # detrend time series
             nprobes = len(self.ogtl_probe_params)
-            self.ogtl_radord_deg  = nprobes-1   # fit OG vs radial order curve 
+            self.ogtl_radord_deg  = 3 #nprobes-1   # fit OG vs radial order curve 
             # self.ogtl_gain = 0.3
 
             self.ogtl_timevec = np.arange(0,ogtl_sz)*self.Tsim
             self.cosFn = np.array([np.cos(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
             self.sinFn = np.array([np.sin(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
 
-            ogtl_Ts_2 = 500e-3 #sampling after convergence [s]
+            #ogtl_Ts_2 = 500e-3 #sampling after convergence [s]
             self.ogtl_reconfig_iter =float('inf')#probeSigInit + np.int(18*ogtl_Ts_1/self.Tsim)  # make sure this coincides with an OGTL iteration.
 
             self.ogtl_ogc_probes = np.ones(nprobes)
-            self.ogtl_ogc_allmodes = np.ones(self.n_mode)
+            #self.ogtl_ogc_allmodes = np.ones(self.n_mode)
             OGC_all  = cp.ones((self.nseg,self.n_mode))
             self.ogtl_ogeff_probes_iter = []
             #ogtl_ogeff_iter = []
@@ -1405,13 +1405,45 @@ class NGAO(object):
         else:
             OGC_all  = cp.ones((self.nseg,self.n_mode))
             
-        #---- Integrator's gain
-        gAO = cp.ones((self.nseg,self.n_mode)) * 0.5
-        #gAO[:,0:200] = 0.8
-        #gAO[:,0] = 0.5  #SPP gain
+        #use_presaved_ogtl = True
+
+        if self.use_presaved_ogtl:
+            ogtl_fname = 'ogc_r0-%0.1fcm_mag%d'%(self.r0*1e2, self.mag)+'_v1.npz'
+            #ogtl_fname = 'ogc_r0-12.8cm_mag12_v1.npz'
+            print(ogtl_fname)
+            ogtl_fdata = dict(np.load(ogtl_fname))
+            for this_seg in range(6):
+                OGC_all[this_seg,:] = cp.asarray(ogtl_fdata['ogtl_ogc_outer'])
+            OGC_all[6,:] = cp.asarray(ogtl_fdata['ogtl_ogc_centr'])
+            self.ogtl_ogc_probes = OGC_all[0,self.mode_list].get()
+
+        if self.VISU:
+            plt.plot(OGC_all[0,:].get())
+            plt.plot(OGC_all[6,:].get())
+            
+        #--- optimized gain integrator (pre-calibrated gains)
+        if self.use_presaved_omgi:
+            gain_fname = 'omgi_r0-%0.1fcm_mag%d'%(self.r0*1e2, self.mag)+'_v1.npz'
+            #gain_fname = 'omgi_r0-12.8cm_mag12_v1.npz'
+            print(gain_fname)
+            optgain_data = dict(np.load(gain_fname))
+            gAO = cp.zeros((self.nseg,self.n_mode))
+            gAO[0:6,:] = cp.asarray(optgain_data['optgain_outer'])
+            gAO[6,:]   = cp.asarray(optgain_data['optgain_centr'])
+        else:
+            gAO = cp.ones((self.nseg,self.n_mode)) * 0.5
+            #gAO[:,0:200] = 0.8
+            #gAO[:,0] = 0.5  #SPP gain
+        
         gAO = cp.reshape(gAO, (self.ntotmodes,1))
         g_pist = 1.0 # gain of regularized SPP command
-
+        omgi_can_update=False
+        optgain_buffer = np.zeros((self.ntotmodes,2))
+        optgain_buffer[:,0] = gAO[:,0].get()
+        self.optgain_iter = [optgain_buffer[:,0]]
+        self.omgi_ticks = []
+        ffAO = cp.ones(self.ntotmodes) # Forgetting factors; placeholder only
+        
         #---- delay simulation
         self.tot_delay = 2   # in number of frames
         delay  = self.tot_delay-1 
@@ -1428,11 +1460,11 @@ class NGAO(object):
         pist_buffer = cp.zeros((self.nseg,self.tot_delay))
 
         #---- Time histories to save in results
-        if self.save_telemetry or self.ogtl_simul:
-            self.a_M2_iter   = np.zeros((self.nseg,self.n_mode,self.totSimulIter))   # integrated M2 modal commands
-            self.da_M2_iter  = np.zeros((self.nseg,self.n_mode,self.totSimulIter))   # delta M2 modal commands
+        self.a_M2_iter   = np.zeros((self.nseg,self.n_mode,self.totSimulIter))   # integrated M2 modal commands
+        self.da_M2_iter  = np.zeros((self.nseg,self.n_mode,self.totSimulIter))   # delta M2 modal commands
+        self.a_OLCL_iter = np.zeros((self.nseg,self.n_mode,self.totSimulIter))
+        
         if self.save_telemetry:
-            a_OLCL_iter = np.zeros((self.nseg,self.n_mode,self.totSimulIter))
             wfs_meas_iter = np.zeros((self.wfs.get_measurement_size(),self.totSimulIter)) # pyramid WFS signals
             self.wfe_gs_iter = np.zeros(self.totSimulIter)              # on-axis WFE
             self.spp_gs_iter = np.zeros((self.nseg,self.totSimulIter))          # on-axis (differential) segment phase piston error
@@ -1581,8 +1613,7 @@ class NGAO(object):
                     ogtl_count+=1
 
             self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode] = self.M2modes_scramble - self.M2modes_command
-            if self.save_telemetry or self.ogtl_simul:
-                self.a_M2_iter[:,:,jj] = self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode]
+            self.a_M2_iter[:,:,jj] = self.gmt.M2.modes.a[:,self.z_first_mode:self.n_mode]
             self.gmt.M2.modes.update()
 
             #----- On-axis WFS measurement ---------------------------------------------------
@@ -1644,7 +1675,8 @@ class NGAO(object):
             self.wfs.reset()
             if self.simul_wfs_noise:
                 self.wfs.propagate(self.gs)
-                self.wfs.camera.readOut(self.Tsim, self.RONval, 0, self.excess_noise)
+                #self.wfs.camera.readOut(self.Tsim, self.RONval, 0, self.excess_noise)
+                self.wfs.readOut(self.Tsim, RON=self.RONval)
                 self.wfs.process()
             else:
                 self.wfs.analyze(self.gs)   # This simulates a noise-less read-out.
@@ -1655,28 +1687,126 @@ class NGAO(object):
                 wfs_meas_iter[:,jj] = AOmeasvec
 
             #------ WF Reconstruction and command computation --------------------------------------------
-            if self.rec_type=='LS':
-
-                if jj >= AOinit:
+            if jj >= AOinit:
+                if self.rec_type=='LS':
                     myAOest1[:,0] = OGC_all.ravel() * (self.R_AO @ cp.asarray(AOmeasvec))
 
 
-                if jj < self.SPPctrlInit:   # Do not control segment piston
-                    myAOest1[self.n_mode*np.arange(self.nseg),0] = 0
-                elif jj == self.SPPctrlInit:
-                    #g_pist=0.0
-                    comm_buffer[self.n_mode*np.arange(self.nseg),:] = pist_buffer
-                    # print('comm_buffer when: jj == self.SPPctrlInit')
-                    # print(comm_buffer)
-                    
+            if jj < self.SPPctrlInit:   # Do not control segment piston
+                myAOest1[self.n_mode*np.arange(self.nseg),0] = 0
+            elif jj == self.SPPctrlInit and (self.rec_type=='LS' and self.spp_rec_type=='MMSE'):
+                #g_pist=0.0
+                comm_buffer[self.n_mode*np.arange(self.nseg),:] = pist_buffer
 
-                if self.save_telemetry or self.ogtl_simul:
-                    self.da_M2_iter[:,:,jj]  = cp.asnumpy(myAOest1.ravel()).reshape((self.nseg,self.n_mode))
-                if self.save_telemetry:
-                    a_OLCL_iter[:,:,jj] = self.M2modes_command + self.da_M2_iter[:,:,jj] 
-
-                myAOest1 *= gAO
+            self.da_M2_iter[:,:,jj]  = cp.asnumpy(myAOest1.ravel()).reshape((self.nseg,self.n_mode))
+            self.a_OLCL_iter[:,:,jj] = self.M2modes_command + self.da_M2_iter[:,:,jj]
                 
+
+            #------ Second phasing channel measurement and command -------------------------------
+            if jj == self.SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
+                if self.fake_fast_spp_convergence and self.secondChannelType=='idealpistonsensor':
+                    self.onps.reset()
+                    self.onps.analyze(self.gs)
+                    pistjumps_est = self.onps.get_measurement()
+                    pistjumps_est -= pistjumps_est[6]
+                    pistjumps_com = np.dot(self.R_M2_PSideal,pistjumps_est)
+                    comm_buffer[self.KL0_idx,:] += cp.asarray(pistjumps_com[0:6,np.newaxis])
+                    self.onps.reset()
+                    # print('comm_buffer when jj == self.SPP2ndChInit')
+                    # print(comm_buffer)
+                if self.secondChannelType == 'lift':
+                    self.doubleChan2[0].wfs.reset()
+                    self.doubleChan2[1].wfs.reset()
+                    self.doubleChan2[0].propagate()
+                    self.doubleChan2[1].propagate()
+                elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                    self.chan2.wfs.reset()
+                    self.chan2.propagate()
+
+                    #if simul_windload==False:
+                    #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
+                    #    gmt.M2.motion_CS.update()
+
+            elif jj > self.SPP2ndChInit:
+                if self.SPP2ndCh_count == self.SPP2ndCh_Ts-1:# every time the counter reaches the exposure time for the second channel
+                    if self.secondChannelType == 'idealpistonsensor':
+                        self.onps.analyze(self.gs)
+                        pistjumps_est = self.onps.get_measurement()
+                        pistjumps_est -= pistjumps_est[6]
+                        pistjumps_2nd = np.zeros(self.nseg)
+                        pistjumps_2nd = np.where(pistjumps_est >  self.SPP2ndCh_thr,  self.gs.wavelength, pistjumps_2nd )
+                        pistjumps_2nd = np.where(pistjumps_est < -self.SPP2ndCh_thr, -self.gs.wavelength, pistjumps_2nd )                               
+                        pistjumps_com = np.dot(self.R_M2_PSideal,pistjumps_2nd)
+                        #if simul_windload==False:
+                        #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
+                        #    gmt.M2.motion_CS.update()
+                        comm_buffer[self.KL0_idx,:] += cp.asarray(pistjumps_com[0:6,np.newaxis])
+                        # print('comm_buffer when jj > self.SPP2ndChInit and jj = {}'.format(jj))
+                        # print(comm_buffer)
+
+                        self.onps.reset()
+                    if self.secondChannelType == 'lift':
+                        self.doubleChan2[0].process(dbg = dbg,figsize=figsize)
+                        self.doubleChan2[0].pistEstTime.append(jj)
+                        self.doubleChan2[0].pistEstList.append(self.doubleChan2[0].piston_estimate)
+                        self.doubleChan2[1].process(dbg = dbg,figsize=figsize)
+                        self.doubleChan2[1].pistEstTime.append(jj)
+                        self.doubleChan2[1].pistEstList.append(self.doubleChan2[1].piston_estimate)
+
+                        chan1converge = np.array([a*self.gs.wavelength for a in range(-7,8)])
+                        tolerence = 50*10**-9
+                        aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
+                        for ss in range(self.nseg-1):
+                            self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est3(self.gs.wavelength,
+                                                                                  self.doubleChan2[0].cwl,
+                                                                                  self.doubleChan2[1].cwl,
+                                                                                  self.doubleChan2[0].piston_estimate[ss],
+                                                                                  self.doubleChan2[1].piston_estimate[ss],
+                                                                                   apriori = aprio.copy()
+                                                                                  )
+                        if self.chan2.active_corr:
+                            comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
+
+                        self.doubleChan2[0].correctionList.append(self.doubleChan2[0].forCorrection.copy())
+                        self.doubleChan2[0].wfs.reset()
+                        self.doubleChan2[1].wfs.reset()
+
+                    elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                        #TODO
+                        self.chan2.process(dbg = dbg,figsize=figsize)
+                        self.chan2.pistEstTime.append(jj)
+                        self.chan2.pistEstList.append(self.chan2.piston_estimate)
+
+                        if dbg and self.chan2.sensorType.lower() == PYRAMID_SENSOR:
+                            sx2d, sy2d = self.pyr_display_signals_base(self.chan2.wfs,
+                                                        *self.chan2.wfs.get_measurement(out_format='list' ),
+                                                        title = ['sx measured by channel 2', 'sy measured by channel 2' ],
+                                                        figsize=figsize)
+                            self.chan2.debugframe.append([sx2d,sy2d])
+
+                        comm_buffer[self.KL0_idx,:] -= cp.asarray(self.chan2.forCorrection[0:6,np.newaxis])
+                        self.chan2.wfs.reset()
+
+                    self.SPP2ndCh_count=0
+                else:
+                    if self.secondChannelType == 'idealpistonsensor':
+                        self.onps.propagate(self.gs)
+                    elif self.secondChannelType == 'lift':
+                        self.doubleChan2[0].propagate()
+                        self.doubleChan2[1].propagate()
+                    elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
+                        self.chan2.propagate()
+
+                    self.SPP2ndCh_count+=1
+
+            myAOest1 *= gAO
+            comm_buffer[:,0] *= ffAO #apply forgetting factors
+            comm_buffer =  cp.dot(comm_buffer, Mdecal) + cp.dot(myAOest1,Vinc)  # handle time delay
+            
+            #---- PIston-reguliarized command
+            if self.rec_type=='LS' and self.spp_rec_type=='MMSE': 
+                print("coming soon...")
+
                 #----- Optical Gain Tracking Loop
             if self.ogtl_simul:
                 if ogtl_count == ogtl_sz:
@@ -1691,17 +1821,23 @@ class NGAO(object):
                     self.ogtl_ogeff_probes_iter.append(OGeff.copy())
 
                     #---- Compute optical gain compensation (OGC) coefficients for probes
-                    self.ogtl_ogc_probes += self.ogtl_gain * (1-OGeff)
+                    self.ogtl_ogc_probes = 0.995*self.ogtl_ogc_probes + self.ogtl_gain * (1-OGeff)
                     self.ogtl_ogc_probes_iter.append(self.ogtl_ogc_probes.copy())
                     
-
-                    #---- Fit cubic spline to radial order vs OGC
-                    ogc_spline = CubicSpline(self.probe_radord, self.ogtl_ogc_probes, 
-                                             bc_type='natural', extrapolate=True)
-                    self.ogtl_ogc_allmodes_outer = ogc_spline(self.radord_all_outer)
+                    #---- Fit polynomial to radial order vs OGC 
+                    ogc_fitcoefs = np.polyfit(self.probe_radord, self.ogtl_ogc_probes, self.ogtl_radord_deg)
+                    self.ogtl_ogc_allmodes_outer = poly_nomial(self.radord_all_outer,ogc_fitcoefs)
+                    self.ogtl_ogc_allmodes_centr = poly_nomial(self.radord_all_centr,ogc_fitcoefs)
                     self.ogtl_ogc_outer_iter.append(self.ogtl_ogc_allmodes_outer.copy())
-                    self.ogtl_ogc_allmodes_centr = ogc_spline(self.radord_all_centr)
                     self.ogtl_ogc_centr_iter.append(self.ogtl_ogc_allmodes_centr.copy())
+            
+                    #---- Fit cubic spline to radial order vs OGC (Descoped)
+                    #ogc_spline = CubicSpline(self.probe_radord, self.ogtl_ogc_probes, 
+                    #                         bc_type='natural', extrapolate=True)
+                    #self.ogtl_ogc_allmodes_outer = ogc_spline(self.radord_all_outer)
+                    #self.ogtl_ogc_outer_iter.append(self.ogtl_ogc_allmodes_outer.copy())
+                    #self.ogtl_ogc_allmodes_centr = ogc_spline(self.radord_all_centr)
+                    #self.ogtl_ogc_centr_iter.append(self.ogtl_ogc_allmodes_centr.copy())
                     
                     #passing the ogc to the second channel for extrapolation
                     if self.secondChannelType == 'lift':
@@ -1713,6 +1849,10 @@ class NGAO(object):
                     
 
                     #---- Update K_OGC matrix
+                    if self.omgi:
+                        OGC_all_previous = OGC_all.copy()
+                        omgi_can_update = True
+                        #omgi_can_update *= ogtl_reconfigured
                     for this_seg in range(6):
                         OGC_all[this_seg,:] = cp.asarray(self.ogtl_ogc_allmodes_outer)
                     OGC_all[6,:] = cp.asarray(self.ogtl_ogc_allmodes_centr)
@@ -1731,110 +1871,18 @@ class NGAO(object):
                 #     self.sinFn = np.array([np.sin(2*np.pi*kk['freq']*self.ogtl_timevec) for kk in self.ogtl_probe_params])
 
                 
-                
-                
-                # self.phres_cube.append(self.gs.phase.host())
-                if jj == self.SPP2ndChInit: # Apply a one-time 2nd NGWS channel segment piston correction
-                    if self.fake_fast_spp_convergence and self.secondChannelType=='idealpistonsensor':
-                        self.onps.reset()
-                        self.onps.analyze(self.gs)
-                        pistjumps_est = self.onps.get_measurement()
-                        pistjumps_est -= pistjumps_est[6]
-                        pistjumps_com = np.dot(self.R_M2_PSideal,pistjumps_est)
-                        comm_buffer[self.KL0_idx,:] += cp.asarray(pistjumps_com[0:6,np.newaxis])
-                        self.onps.reset()
-                        # print('comm_buffer when jj == self.SPP2ndChInit')
-                        # print(comm_buffer)
-                    if self.secondChannelType == 'lift':
-                        self.doubleChan2[0].wfs.reset()
-                        self.doubleChan2[1].wfs.reset()
-                        self.doubleChan2[0].propagate()
-                        self.doubleChan2[1].propagate()
-                    elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
-                        self.chan2.wfs.reset()
-                        self.chan2.propagate()
+            if omgi_can_update==True:
+                print("OMGI updated!")
+                fvec, a_OLCL_psd = signal.welch(self.a_OLCL_iter[:,:,jj-ogtl_sz:jj], 1/self.Tsim, nperseg=ogtl_sz//2)
+                optgain_new = self.dessenne_gain(fvec, a_OLCL_psd).ravel()
 
-                        #if simul_windload==False:
-                        #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
-                        #    gmt.M2.motion_CS.update()
-                        
-                elif jj > self.SPP2ndChInit:
-                    if self.SPP2ndCh_count == self.SPP2ndCh_Ts-1:# every time the counter reaches the exposure time for the second channel
-                        if self.secondChannelType == 'idealpistonsensor':
-                            self.onps.analyze(self.gs)
-                            pistjumps_est = self.onps.get_measurement()
-                            pistjumps_est -= pistjumps_est[6]
-                            pistjumps_2nd = np.zeros(self.nseg)
-                            pistjumps_2nd = np.where(pistjumps_est >  self.SPP2ndCh_thr,  self.gs.wavelength, pistjumps_2nd )
-                            pistjumps_2nd = np.where(pistjumps_est < -self.SPP2ndCh_thr, -self.gs.wavelength, pistjumps_2nd )                               
-                            pistjumps_com = np.dot(self.R_M2_PSideal,pistjumps_2nd)
-                            #if simul_windload==False:
-                            #    gmt.M2.motion_CS.origin[:,2] = np.ascontiguousarray(pistjumps_com)
-                            #    gmt.M2.motion_CS.update()
-                            comm_buffer[self.KL0_idx,:] += cp.asarray(pistjumps_com[0:6,np.newaxis])
-                            # print('comm_buffer when jj > self.SPP2ndChInit and jj = {}'.format(jj))
-                            # print(comm_buffer)
-                            
-                            self.onps.reset()
-                        if self.secondChannelType == 'lift':
-                            self.doubleChan2[0].process(dbg = dbg,figsize=figsize)
-                            self.doubleChan2[0].pistEstTime.append(jj)
-                            self.doubleChan2[0].pistEstList.append(self.doubleChan2[0].piston_estimate)
-                            self.doubleChan2[1].process(dbg = dbg,figsize=figsize)
-                            self.doubleChan2[1].pistEstTime.append(jj)
-                            self.doubleChan2[1].pistEstList.append(self.doubleChan2[1].piston_estimate)
-
-                            chan1converge = np.array([a*self.gs.wavelength for a in range(-7,8)])
-                            tolerence = 50*10**-9
-                            aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
-                            for ss in range(self.nseg-1):
-                                self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est3(self.gs.wavelength,
-                                                                                      self.doubleChan2[0].cwl,
-                                                                                      self.doubleChan2[1].cwl,
-                                                                                      self.doubleChan2[0].piston_estimate[ss],
-                                                                                      self.doubleChan2[1].piston_estimate[ss],
-                                                                                       apriori = aprio.copy()
-                                                                                      )
-                            if self.chan2.active_corr:
-                                comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
-                            
-                            self.doubleChan2[0].correctionList.append(self.doubleChan2[0].forCorrection.copy())
-                            self.doubleChan2[0].wfs.reset()
-                            self.doubleChan2[1].wfs.reset()
-                        
-                        elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
-                            #TODO
-                            self.chan2.process(dbg = dbg,figsize=figsize)
-                            self.chan2.pistEstTime.append(jj)
-                            self.chan2.pistEstList.append(self.chan2.piston_estimate)
-                            
-                            if dbg and self.chan2.sensorType.lower() == PYRAMID_SENSOR:
-                                sx2d, sy2d = self.pyr_display_signals_base(self.chan2.wfs,
-                                                            *self.chan2.wfs.get_measurement(out_format='list' ),
-                                                            title = ['sx measured by channel 2', 'sy measured by channel 2' ],
-                                                            figsize=figsize)
-                                self.chan2.debugframe.append([sx2d,sy2d])
-                            
-                            comm_buffer[self.KL0_idx,:] -= cp.asarray(self.chan2.forCorrection[0:6,np.newaxis])
-                            self.chan2.wfs.reset()
-                            
-                        self.SPP2ndCh_count=0
-                    else:
-                        if self.secondChannelType == 'idealpistonsensor':
-                            self.onps.propagate(self.gs)
-                        elif self.secondChannelType == 'lift':
-                            self.doubleChan2[0].propagate()
-                            self.doubleChan2[1].propagate()
-                        elif self.secondChannelType in [PYRAMID_SENSOR,PHASE_CONTRAST_SENSOR]:
-                            self.chan2.propagate()
-                            
-                        self.SPP2ndCh_count+=1
-                            
-
-                comm_buffer =  cp.dot(comm_buffer, Mdecal) + cp.dot(myAOest1,Vinc)  # handle time delay
-
-            if self.spp_rec_type=='MMSE':
-                print('code removed')
+                optgain_buffer = np.roll(optgain_buffer,1)
+                omgi_lpf = 0.5
+                optgain_buffer[:,0] = (1-omgi_lpf)*optgain_buffer[:,1] + omgi_lpf*optgain_new
+                self.optgain_iter.append(optgain_buffer[:,0])
+                gAO[:,0] = cp.asarray(optgain_buffer[:,0]) * (OGC_all_previous/OGC_all).ravel()
+                omgi_can_update=False
+                self.omgi_ticks.append(jj*self.Tsim)                
 
 
             
@@ -2015,16 +2063,21 @@ class NGAO(object):
             tosave.update(dict(band=self.band, lwfs=self.gs.wavelength, 
                                mag=self.mag, e0=self.e0, nLenslet=self.nLenslet, 
                                M2_n_modes=self.M2_n_modes, IMfile=self.IMfnameFull,
-                               pixelSize=self.pixelSize, gAO=gAO.get(), tot_delay=self.tot_delay, 
+                               pixelSize=self.pixelSize, tot_delay=self.tot_delay, 
                                SPPctrlInit=self.SPPctrlInit, SPP2ndChInit=self.SPP2ndChInit, 
                                SPP2ndCh_Ts=self.SPP2ndCh_Ts, AOinit=AOinit))
+
+            if self.omgi:
+                tosave.update(dict(gAO=self.optgain_iter, omgi_lpf=omgi_lpf, omgi_ticks=self.omgi_ticks))
+            else:
+                tosave.update(dict(gAO=gAO.get()))         
 
             if self.save_telemetry:
                 tosave.update(dict(a_M2_iter=self.a_M2_iter, da_M2_iter=self.da_M2_iter, 
                                    wfe_gs_iter=self.wfe_gs_iter, spp_gs_iter=self.spp_gs_iter, 
                                    seg_wfe_gs_iter=self.seg_wfe_gs_iter,wfs_meas_iter=wfs_meas_iter, 
                                    wfgrad_iter=wfgrad_iter, seg_wfgrad_iter=seg_wfgrad_iter, 
-                                   opdr_spp_iter=self.spp_gs_iter))
+                                   opdr_spp_iter=self.spp_gs_iter, a_OLCL_iter=self.a_OLCL_iter))
                     # opdr_spp_iter=self.crazy_spp_iter))
 
             # Pyramid WFS parameters
@@ -2036,7 +2089,8 @@ class NGAO(object):
             if self.ogtl_simul:
                 tosave.update(dict(ogtl_probe_params=self.ogtl_probe_params, 
                                    ogtl_detrend_deg=self.ogtl_detrend_deg, 
-                                   ogtl_gain=self.ogtl_gain, #ogtl_ogc_iter=ogtl_ogc_iter, #ogtl_ogeff_iter=ogtl_ogeff_iter,
+                                   ogtl_gain=self.ogtl_gain,
+                                   probe_radord=self.probe_radord
                                   ogtl_ogc_outer_iter=self.ogtl_ogc_outer_iter,
                                   ogtl_ogc_centr_iter=self.ogtl_ogc_centr_iter,
                                   ogtl_radord_deg=self.ogtl_radord_deg, 
@@ -2170,6 +2224,7 @@ class NGAO(object):
             self.AOinit = data['AOinit']
             self.a_M2_iter = data['a_M2_iter']
             self.da_M2_iter = data['da_M2_iter']
+            self.a_OLCL_iter = data['a_OLCL_iter']
             self.wfe_gs_iter = data['wfe_gs_iter']
             self.spp_gs_iter = data['spp_gs_iter']
             self.seg_wfe_gs_iter = data['seg_wfe_gs_iter']
@@ -2199,6 +2254,8 @@ class NGAO(object):
             self.ogtl_ticks = data['ogtl_ticks']
             self.ogtl_ogeff_probes_iter = data['ogtl_ogeff_probes_iter']
             self.ogtl_ogc_probes_iter = data['ogtl_ogc_probes_iter']
+            self.optgain_iter = data['optgain_iter']
+            self.omgi_ticks = data['omgi_ticks']
             self.chan2.pistEstTime = data['chan2pistEstTime']
             self.chan2.pistEstList = data['chan2pistEstList']
             self.chan2.ogc_iter = data['chan2ogc_iter']
