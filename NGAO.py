@@ -1416,7 +1416,8 @@ class NGAO(object):
         #use_presaved_ogtl = True
 
         if self.use_presaved_ogtl:
-            ogtl_fname = 'ogc_r0-%0.1fcm_mag%d'%(self.r0*1e2, self.mag)+'_v1.npz'
+            ogtl_fname = self.dir_calib+'ogc_r0-{:0.1f}cm_mag{:.0f}' \
+                            .format(self.r0*1e2, self.mag)+'_v1.npz'
             #ogtl_fname = 'ogc_r0-12.8cm_mag12_v1.npz'
             print(ogtl_fname)
             ogtl_fdata = dict(np.load(ogtl_fname))
@@ -1431,7 +1432,8 @@ class NGAO(object):
             
         #--- optimized gain integrator (pre-calibrated gains)
         if self.use_presaved_omgi:
-            gain_fname = self.dir_calib+'omgi_r0-{:0.1f}cm_mag{:.0f}'.format(self.r0*1e2, self.mag)+'_v1.npz'
+            gain_fname = self.dir_calib+'omgi_r0-{:0.1f}cm_mag{:.0f}' \
+                            .format(self.r0*1e2, self.mag)+'_v1.npz'
             #gain_fname = 'omgi_r0-12.8cm_mag12_v1.npz'
             print(gain_fname)
             optgain_data = dict(np.load(gain_fname))
@@ -1892,6 +1894,7 @@ class NGAO(object):
                 gAO[:,0] = cp.asarray(optgain_buffer[:,0]) * (OGC_all_previous/OGC_all).ravel()
                 omgi_can_update=False
                 self.omgi_ticks.append(jj*self.Tsim)                
+            
 
 
 
@@ -2265,7 +2268,7 @@ class NGAO(object):
             self.ogtl_ticks = data['ogtl_ticks']
             self.ogtl_ogeff_probes_iter = data['ogtl_ogeff_probes_iter']
             self.ogtl_ogc_probes_iter = data['ogtl_ogc_probes_iter']
-            self.optgain_iter = data['optgain_iter']
+            self.optgain_iter = data['gAO']
             self.omgi_ticks = data['omgi_ticks']
             self.chan2.pistEstTime = data['chan2pistEstTime']
             self.chan2.pistEstList = data['chan2pistEstList']
