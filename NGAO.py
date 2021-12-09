@@ -239,6 +239,10 @@ class NGAO(object):
             self.ogtl_Ts = eval(parser.get('pyramid1stChan', 'ogtl_Ts'))
             self.ogtl_gain = eval(parser.get('pyramid1stChan', 'ogtl_gain'))
             self.ogtl_detrend_deg = eval(parser.get('pyramid1stChan', 'ogtl_detrend_deg'))
+            
+            self.use_presaved_ogtl = eval(parser.get('pyramid1stChan', 'use_presaved_ogtl'))
+            self.omgi = eval(parser.get('pyramid1stChan', 'omgi'))
+            self.use_presaved_omgi = eval(parser.get('pyramid1stChan', 'use_presaved_omgi'))
 
             #---- Pyramid initialization
             self.wfs = ceo.Pyramid(self.nLenslet, self.nPx, modulation=self.pyr_modulation, throughput=self.throughput, separation=self.pyr_separation/self.nLenslet)
@@ -295,7 +299,8 @@ class NGAO(object):
             self.atm_t0 = eval(parser.get('turbulence', 't0atm'))
             if (self.atm_t0+self.totSimulTime)>self.atm_duration:
                 print('warning: atmt0 too late to fit in the atmosphere duration.')
-                self.atm_t0 = self.atm_duration-self.totSimulTime
+                # self.atm_t0 = self.atm_duration-self.totSimulTime
+                self.atm_duration = self.totSimulTime+self.atm_t0
             self.atm_t0 /= self.Tsim
             #TODOFR: Put r0 as parameter and derive the seeing value
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
@@ -785,14 +790,17 @@ class NGAO(object):
             print('       Mean wind speed : %2.1f m/s' % self.meanV)
             print('                  tau0 : %2.2f ms'%(self.tau0*1e3))
             print('    r0 @ 500nm @ %d deg: %2.1f cm'%(self.zen_angle,self.r0*1e2))
-            print('seeing @ 500nm @ %d deg: %2.2f arcsec'%(self.zen_angle,0.9759*500e-9/self.r0*ceo.constants.RAD2ARCSEC))
+            print('seeing @ 500nm @ %d deg: %2.2f arcsec'%(self.zen_angle,0.9759*500e-9/
+                                                           self.r0*ceo.constants.RAD2ARCSEC))
 
             #atm_fname = 'gmtAtmosphere_median_1min.bin'
             #atm_fullname = os.path.normpath(os.path.join(atm_dir,atm_fname))
             self.atm_fullname=None
 
-            self.atm = ceo.Atmosphere(self.r0,self.L0,len(self.altitude),self.altitude,self.xi0,self.wind_speed,self.wind_direction,
-                             L=26,NXY_PUPIL=self.nPx,fov=0.0*ceo.constants.ARCMIN2RAD, filename=self.atm_fullname, duration=self.atm_duration)
+            self.atm = ceo.Atmosphere(self.r0,self.L0,len(self.altitude),self.altitude,
+                                      self.xi0,self.wind_speed,self.wind_direction,
+                             L=26,NXY_PUPIL=self.nPx,fov=0.0*ceo.constants.ARCMIN2RAD, 
+                             filename=self.atm_fullname, duration=self.atm_duration)
                                  #duration=5.0, N_DURATION=6)
             
             if self.simul_variable_seeing:
@@ -1423,7 +1431,7 @@ class NGAO(object):
             
         #--- optimized gain integrator (pre-calibrated gains)
         if self.use_presaved_omgi:
-            gain_fname = 'omgi_r0-%0.1fcm_mag%d'%(self.r0*1e2, self.mag)+'_v1.npz'
+            gain_fname = self.dir_calib+'omgi_r0-{:0.1f}cm_mag{:.0f}'.format(self.r0*1e2, self.mag)+'_v1.npz'
             #gain_fname = 'omgi_r0-12.8cm_mag12_v1.npz'
             print(gain_fname)
             optgain_data = dict(np.load(gain_fname))
@@ -1442,7 +1450,7 @@ class NGAO(object):
         optgain_buffer[:,0] = gAO[:,0].get()
         self.optgain_iter = [optgain_buffer[:,0]]
         self.omgi_ticks = []
-        ffAO = cp.ones(self.ntotmodes) # Forgetting factors; placeholder only
+        self.ffAO = cp.ones(self.ntotmodes) # Forgetting factors; placeholder only
         
         #---- delay simulation
         self.tot_delay = 2   # in number of frames
@@ -1753,16 +1761,17 @@ class NGAO(object):
                         self.doubleChan2[1].pistEstTime.append(jj)
                         self.doubleChan2[1].pistEstList.append(self.doubleChan2[1].piston_estimate)
 
-                        chan1converge = np.array([a*self.gs.wavelength for a in range(-7,8)])
-                        tolerence = 50*10**-9
-                        aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
+                        # chan1converge = np.array([a*self.gs.wavelength for a in range(-7,8)])
+                        # tolerence = 50*10**-9
+                        # aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
                         for ss in range(self.nseg-1):
                             self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est3(self.gs.wavelength,
                                                                                   self.doubleChan2[0].cwl,
                                                                                   self.doubleChan2[1].cwl,
                                                                                   self.doubleChan2[0].piston_estimate[ss],
                                                                                   self.doubleChan2[1].piston_estimate[ss],
-                                                                                   apriori = aprio.copy()
+                                                                                  apriori = self.chan2.aprio.copy(),
+                                                                                  amp_conf = self.chan2.amp_conf
                                                                                   )
                         if self.chan2.active_corr:
                             comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
@@ -1800,7 +1809,7 @@ class NGAO(object):
                     self.SPP2ndCh_count+=1
 
             myAOest1 *= gAO
-            comm_buffer[:,0] *= ffAO #apply forgetting factors
+            comm_buffer[:,0] *= self.ffAO #apply forgetting factors
             comm_buffer =  cp.dot(comm_buffer, Mdecal) + cp.dot(myAOest1,Vinc)  # handle time delay
             
             #---- PIston-reguliarized command
@@ -1883,6 +1892,8 @@ class NGAO(object):
                 gAO[:,0] = cp.asarray(optgain_buffer[:,0]) * (OGC_all_previous/OGC_all).ravel()
                 omgi_can_update=False
                 self.omgi_ticks.append(jj*self.Tsim)                
+
+
 
 
             
@@ -2090,16 +2101,16 @@ class NGAO(object):
                 tosave.update(dict(ogtl_probe_params=self.ogtl_probe_params, 
                                    ogtl_detrend_deg=self.ogtl_detrend_deg, 
                                    ogtl_gain=self.ogtl_gain,
-                                   probe_radord=self.probe_radord
-                                  ogtl_ogc_outer_iter=self.ogtl_ogc_outer_iter,
-                                  ogtl_ogc_centr_iter=self.ogtl_ogc_centr_iter,
-                                  ogtl_radord_deg=self.ogtl_radord_deg, 
-                                  ogtl_Ts=[self.ogtl_Ts,self.ogtl_Ts], 
-                                  probeSigInit=probeSigInit,
-                                  ogtl_reconfig_iter=self.ogtl_reconfig_iter, 
-                                  ogtl_ticks=self.ogtl_ticks, 
-                                  ogtl_ogeff_probes_iter=self.ogtl_ogeff_probes_iter,
-                                  ogtl_ogc_probes_iter=self.ogtl_ogc_probes_iter))
+                                   probe_radord=self.probe_radord,
+                                   ogtl_ogc_outer_iter=self.ogtl_ogc_outer_iter,
+                                   ogtl_ogc_centr_iter=self.ogtl_ogc_centr_iter,
+                                   ogtl_radord_deg=self.ogtl_radord_deg, 
+                                   ogtl_Ts=[self.ogtl_Ts,self.ogtl_Ts], 
+                                   probeSigInit=probeSigInit,
+                                   ogtl_reconfig_iter=self.ogtl_reconfig_iter, 
+                                   ogtl_ticks=self.ogtl_ticks, 
+                                   ogtl_ogeff_probes_iter=self.ogtl_ogeff_probes_iter,
+                                   ogtl_ogc_probes_iter=self.ogtl_ogc_probes_iter))
                 
         #save second channel data
         notsaveKeys = ['chan1wl','debugframe','ogc','VISU', 'simul_truss_mask',

@@ -159,6 +159,12 @@ class Chan2(object):
         elif self.sensorType.lower() == LIFT:
             self.excess_noise = eval(parser.get('2ndChan','excess_noise'))[sensorId]
             self.wfs = ceo.sensors.LiftCEO( path, parametersFile,sectionName)
+            #dual wavelength setup
+            if parser.has_option('2ndChan','dualWL2ndChan'):
+                self.dualWL2ndChan = eval(parser.get('2ndChan', 'dualWL2ndChan'))
+                self.starcolor = eval(parser.get('2ndChan', 'starcolor'))
+                self.aprioriTolerence = eval(parser.get('2ndChan', 'aprioriTolerence'))
+                self.amp_conf = eval(parser.get('2ndChan', 'amp_conf'))
             
             self.nPx = self.wfs.gridSize
             # self.cwl = self.wfs.lambdaValue*10**-9
@@ -454,7 +460,13 @@ class Chan2(object):
             self.R2m[3,4] = 1
             self.R2m[4,3] = 1
             self.R2m[5,2] = 1
-            # self.wfs.R2m *= 10**-9
+            
+            #dual wavelength setup
+            if self.dualWL2ndChan and self.starcolor == 'monochromatic':
+                converge = np.arange(-5*self.chan1wl,5.1*self.chan1wl,self.chan1wl)
+                self.aprio= np.array([[a-self.aprioriTolerence,a+self.aprioriTolerence] 
+                                      for a in converge])
+            
             
     def propagate(self):
         if self.rescaleAtmResidual:
@@ -481,6 +493,124 @@ class Chan2(object):
         self.ogc = (a*see)+b+(c/self.cwl)
         
         
+    
+    def piston_est4(lambda0,lambda1,lambda2,s1,s2,
+                span = [-5000*10**-9,5000*10**-9],
+                amp_conf = 0.1, # seuil de confiance
+                apriori = None, # tableau 2*n (n le nombre d'intervalles a considere pour 0
+                lift = True, #on utilise lift
+                zm = False,#on utilise le zernike
+                silent = True):
+    
+        """
+        This function is aimed at unwrapping a dual wavelength measurement
+        input:
+            lambda0, lambda1, lambda2: floats
+                The wavelengths of the first channel (lambda0) and the wavelengths at 
+                which you are measuring (lambda1 and lambda2) in meters
+            
+            s1, s2: floats
+            The signal produced by a measurement at lambda1 and lambda2. This is unit less.
+            
+            span: array of 2 floats, optionnal
+            The search space in which the piston can be in meters
+            
+            amp_conf: float, optional
+            the confidence threshold for accepting a piston as possible solution. This is unitless
+            
+            apriori: array of 2xN, optionnal
+            a priori contain all the intervals in which, the solution is likely to be.
+            This is an array in which apriori[0] contain all the span begining and 
+            apriori[1] all the span end. the boundaries must be given in meters
+            
+            lift : bool, optionnal
+            set this option to True is you are using the lift wavefront sensor
+            
+            zm : bool, optionnal
+            set this option to True if you are using the zernike phase contrast sensor.
+            
+            silent : bool optionnal
+            Set this to False if you want the function to tell you it's conclusions live
+            
+        output:
+            the estimate of the piston difference in meters 
+        
+        Authors : Cedric Plantet, Simonet Esposito, Enrico Pinna
+        Translation to python: pyIDL and Anne-Laure Cheffot
+        """
+    
+        lambda0*= 10**9
+        lambda1*=10**9
+        lambda2*=10**9
+        span = [a*10**9 for a in span]
+        
+        if np.abs(s1) < .05 and np.abs(s2) < .05 :
+            if not(silent) : print,'Signals < 0.05, returning 0'
+            return 0
+            
+        if apriori is None:
+            apriori = np.array([span.copy()])
+        else:
+            apriori *= 10**9
+        npts = 1e5
+        x = np.arange(npts)*(span[1]-span[0])/(npts-1)+span[0]
+    
+        if not zm  :
+            if abs(s1) > 1: s1 = np.sign(s1)
+            if abs(s2) > 1: s2 = np.sign(s2)
+        else :
+            s1 = (s1 < 1) > (-.8)
+            s2 = (s2 < 1) > (-.8)
+        
+    
+        mask0 = np.zeros(int(npts))
+        for i in range(0, len(apriori)):
+            cur_idx = np.where(np.logical_and(x>= apriori[i,0],x<=apriori[i,1]))
+            mask0[cur_idx] = 1
+        
+    
+        if not lift :
+            signal1 = np.sin(x*2*np.pi/lambda1)
+            signal2 = np.sin(x*2*np.pi/lambda2)
+            if zm :
+                signal1[signal1 < 0] *= 0.8
+                signal2[signal2 < 0] *= 0.8
+        else :
+            signal1 = np.arctan(np.tan(x*np.pi/lambda1))*2./np.pi
+            signal2 = np.arctan(np.tan(x*np.pi/lambda2))*2./np.pi
+    
+        #pistons that give the expected signal within the threshold
+        mask1 = np.logical_and(signal1 >= s1-amp_conf, signal1 < s1+amp_conf)
+        #
+        #Same for 2nd lambda
+        mask2 = np.logical_and(signal2 >= s2-amp_conf, signal2 < s2+amp_conf)
+            #
+        mask = mask1*mask2*mask0
+        # plt.plot(x,mask0)
+        # plt.plot(x,mask1)
+        # plt.plot(x,mask2)
+        # plt.plot(x,mask)
+        #stop
+        #detect intervals & select potential solutions
+        idx_est = (mask).nonzero()[0]
+        # idx_est = idx_est[0]
+        count_est = len(idx_est)
+        if count_est != 0 :
+            opd_est = np.mean(x[idx_est])
+            opd_est_ptv = max(x[idx_est])-min(x[idx_est])
+            if opd_est_ptv > lambda0/2. :
+                if np.sum(np.sign(x[idx_est]) != np.sign(x[idx_est[0]])) == 0 :
+                    if not silent : print('Ambiguous estimation with same sign')
+                    return np.sign(x[idx_est[0]])*lambda0
+                else :
+                   if not silent : print('Ambiguous estimation')
+                   return 0
+    
+                
+            return opd_est
+        else :
+            if not silent : print('No solution detected')
+            return 0
     
     def piston_est3(self,lambda0,lambda1,lambda2,s1,s2,
                 span = [-5000*10**-9,5000*10**-9],# nm
