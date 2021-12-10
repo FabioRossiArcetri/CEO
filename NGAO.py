@@ -633,6 +633,50 @@ class NGAO(object):
 
                 self.R_AO = cp.asarray(self.R_AO)
                 self.ntotmodes = self.R_AO.shape[0]
+    
+    def regularizedSegmentPistonReconstructor(self, figsize=(15,5)):
+        
+        #--- Restore pre-saved segment KL modes covariance matrix
+        segklCov_file = np.load('ASM_DDKLs_S7OC%05d_675kls_CovMat.npz'%(self.Roc*1e4))
+        segklCov = segklCov_file.f.CovMat
+        segklCov_nmodes = segklCov_file.f.n_modes
+        print('Covariance matrix compute for r0=%0.1f cm and L0=%0.0f m'%(segklCov_file.f.r0*1e2,segklCov_file.f.L0))
+        
+        #--- Extract segKL CovMat with only requested KL modes
+        segklCov_rem_idx = []   # index to seg KLs to remove
+        for kk in range(self.nseg):
+            segklCov_rem_idx.append( np.arange(segklCov_nmodes*kk + self.n_mode, segklCov_nmodes*(kk+1)) )
+        segklCov_rem_idx = np.concatenate(segklCov_rem_idx)
+
+        segklCov = np.delete(segklCov, segklCov_rem_idx, axis=1)
+        segklCov = np.delete(segklCov, segklCov_rem_idx, axis=0)
+
+        #--- Show the covariance matrix
+        if self.VISU:
+            plt.imshow(np.log10( np.abs(segklCov)*(1e9)**2), vmin=0, vmax=6, interpolation='None')
+            CovTicks = np.arange(self.nseg) * self.n_mode
+            plt.xticks(CovTicks) # xTicks will be set at multiples of # segment KLs
+            plt.yticks(CovTicks) # xTicks will be set at multiples of # segment KLs
+
+            clb = plt.colorbar()
+            clb.set_label('$\log(\mid C_{KL}\mid)$', fontsize=15)
+            
+        #--- Extract Chh
+        allsp_idx = self.n_mode*np.array([0,1,2,3,4,5,6]) 
+        hhCov = np.delete(segklCov, allsp_idx, axis=1)
+        hhCov = np.delete(hhCov, allsp_idx, axis=0)
+
+        #--- Extract Cph
+        self.allhh_idx = np.setdiff1d(np.arange(self.n_mode*self.nseg), allsp_idx)
+        phCov = np.delete(segklCov, allsp_idx, axis=1)
+        phCov = np.delete(phCov, self.allhh_idx, axis=0)
+        
+        #--- Segment piston estimator based on HO turb statistics
+        hhcov_thr = 1e-5
+        self.R_p = phCov @ np.linalg.pinv(hhCov, rcond=hhcov_thr)
+
+        print('Regularized segment piston reconstructor for bootstrapping:')
+        print(self.R_p.shape)        
                 
                 
     def idealPistonSensor(self,figsize = (15,5)):
@@ -1235,6 +1279,8 @@ class NGAO(object):
         
         self.generalizedIMInverse(figsize = figsize)
         self.addRowsOfRemovedModes(figsize = figsize)
+        if self.spp_rec_type == 'MMSE':
+            self.regularizedSegmentPistonReconstructor(figsize = figsize)
         if self.secondChannelType ==  'idealpistonsensor':
             self.idealPistonSensor(figsize = figsize)
         elif self.secondChannelType == 'lift':
@@ -1816,7 +1862,12 @@ class NGAO(object):
             
             #---- PIston-reguliarized command
             if self.rec_type=='LS' and self.spp_rec_type=='MMSE': 
-                print("coming soon...")
+                a_hh_OL = np.reshape(self.a_OLCL_iter[:,:,jj],(nall,1))[self.allhh_idx]
+                a_p_OL = self.R_p @ a_hh_OL
+                a_p_OL -= a_p_OL[-1]
+                mypist1 = cp.asarray(g_pist*a_p_OL)
+                pist_buffer = cp.dot(pist_buffer,Mdecal)
+                pist_buffer[:,0] = mypist1[:,0]
 
                 #----- Optical Gain Tracking Loop
             if self.ogtl_simul:
