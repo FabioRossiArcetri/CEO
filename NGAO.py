@@ -298,19 +298,24 @@ class NGAO(object):
             self.atm_duration = eval(parser.get('turbulence', 'screenDuration'))
             self.atm_t0 = eval(parser.get('turbulence', 't0atm'))
             if (self.atm_t0+self.totSimulTime)>self.atm_duration:
-                print('warning: atmt0 too late to fit in the atmosphere duration.')
+                print('warning: not enough atmosphere, increasing the atm_duration')
                 # self.atm_t0 = self.atm_duration-self.totSimulTime
                 self.atm_duration = self.totSimulTime+self.atm_t0
             self.atm_t0 /= self.Tsim
-            #TODOFR: Put r0 as parameter and derive the seeing value
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
             self.zen_angle = eval(parser.get('turbulence', 'zen_angle'))
-            self.seeing = eval(parser.get('turbulence', 'seeing'))
+            
             self.L0 = eval(parser.get('turbulence', 'L0'))
             self.altitude = np.array(eval(parser.get('turbulence', 'altitude')))
             self.xi0 = np.array(eval(parser.get('turbulence', 'xi0')))
-            self.r0a  = 0.9759 * 500e-9/(self.seeing * ceo.constants.ARCSEC2RAD)  # Fried parameter at zenith [m]
-            self.r0   = self.r0a * np.cos( self.zen_angle*np.pi/180 )**(3./5.)
+            if parser.has_option('turbulence','seeing' ):
+                self.seeing = eval(parser.get('turbulence', 'seeing'))
+                self.r0a  = 0.9759 * 500e-9/(self.seeing * ceo.constants.ARCSEC2RAD)  # Fried parameter at zenith [m]
+                self.r0   = self.r0a * np.cos( self.zen_angle*np.pi/180 )**(3./5.)
+            else:
+                self.r0 = eval(parser.get('turbulence', 'r0'))
+                self.r0a = self.r0 / np.cos( self.zen_angle*np.pi/180 )**(3./5.)
+                self.seeing = 0.9759*500*10**-9/(self.r0a * ceo.constants.ARCSEC2RAD)
             self.wind_speed = self.wind_scale[0] * np.array(eval(parser.get('turbulence', 'wind_speed')))
             self.wind_direction = np.array(eval(parser.get('turbulence', 'wind_direction')))
             self.meanV = np.sum(self.wind_speed**(5.0/3.0)*self.xi0)**(3./5.)
@@ -637,7 +642,7 @@ class NGAO(object):
     def regularizedSegmentPistonReconstructor(self, figsize=(15,5)):
         
         #--- Restore pre-saved segment KL modes covariance matrix
-        segklCov_file = np.load('ASM_DDKLs_S7OC%05d_675kls_CovMat.npz'%(self.Roc*1e4))
+        segklCov_file = np.load(self.dir_calib+'ASM_DDKLs_S7OC%05d_675kls_CovMat.npz'%(self.Roc*1e4))
         segklCov = segklCov_file.f.CovMat
         segklCov_nmodes = segklCov_file.f.n_modes
         print('Covariance matrix compute for r0=%0.1f cm and L0=%0.0f m'%(segklCov_file.f.r0*1e2,segklCov_file.f.L0))
@@ -1391,7 +1396,7 @@ class NGAO(object):
             print(' WF RMS: %.1f nm'%(self.gs.phaseRms()*1e9))
             print('SPP RMS: %.1f nm'%(np.std(self.gs.piston('segments'))*1e9))
 
-        AOinit = self.AOinitTime #round(0.10/Tsim)               # close the AO loop
+        AOinit = np.round(self.AOinitTime/self.Tsim) #round(0.10/Tsim)               # close the AO loop
 
         if not self.simul_turb:
             #--- Timing when no turbulence is simulated
@@ -1412,7 +1417,7 @@ class NGAO(object):
             # totSimulTime = self.totSimulTime        # simulation duration [in seconds]
             self.totSimulIter = round(self.totSimulTime/self.Tsim) # simulation duration [iterations]
 
-            AOinit = 0 #round(0.10/Tsim)               # close the AO loop
+            AOinit = np.round(self.AOinitTime/self.Tsim) #round(0.10/Tsim)               # close the AO loop
             self.SPPctrlInit  = AOinit+round(self.SPPctrlInitTime/self.Tsim)+1       # start controlling SPP
             self.SPP2ndChInit = AOinit+round(self.SPP2ndChInitTime/self.Tsim)        # start applying 2nd channel correction (with ideal SPS)
             self.SPP2ndCh_Ts  = round(self.chan2.exposure_time/self.Tsim)       # 2nd channel sampling time (in number of iterations)
@@ -1813,7 +1818,7 @@ class NGAO(object):
                         # tolerence = 50*10**-9
                         # aprio= np.array([[a-tolerence,a+tolerence] for a in chan1converge])
                         for ss in range(self.nseg-1):
-                            self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est3(self.gs.wavelength,
+                            self.doubleChan2[0].forCorrection[ss] = self.doubleChan2[0].piston_est4(self.gs.wavelength,
                                                                                   self.doubleChan2[0].cwl,
                                                                                   self.doubleChan2[1].cwl,
                                                                                   self.doubleChan2[0].piston_estimate[ss],
@@ -1939,8 +1944,8 @@ class NGAO(object):
                 optgain_new = self.dessenne_gain(fvec, a_OLCL_psd).ravel()
 
                 optgain_buffer = np.roll(optgain_buffer,1)
-                omgi_lpf = 0.5
-                optgain_buffer[:,0] = (1-omgi_lpf)*optgain_buffer[:,1] + omgi_lpf*optgain_new
+                self.omgi_lpf = 0.5
+                optgain_buffer[:,0] = (1-self.omgi_lpf)*optgain_buffer[:,1] + self.omgi_lpf*optgain_new
                 self.optgain_iter.append(optgain_buffer[:,0])
                 gAO[:,0] = cp.asarray(optgain_buffer[:,0]) * (OGC_all_previous/OGC_all).ravel()
                 omgi_can_update=False
@@ -2112,10 +2117,10 @@ class NGAO(object):
             if self.simul_variable_seeing:
                 tosave.update(dict(r0_iter=self.r0_iter))
 
-        if self.eval_perf_modal:
+        if self.eval_perf_modal:#False
             tosave.update(dict(seg_aRes_gs_iter=seg_aRes_gs_iter))
 
-        if self.eval_perf_modal_turb:
+        if self.eval_perf_modal_turb:#False
             tosave.update(dict(seg_aTur_gs_iter=seg_aTur_gs_iter))
 
         if self.simul_windload:
@@ -2133,7 +2138,7 @@ class NGAO(object):
                                SPP2ndCh_Ts=self.SPP2ndCh_Ts, AOinit=AOinit))
 
             if self.omgi:
-                tosave.update(dict(gAO=self.optgain_iter, omgi_lpf=omgi_lpf, omgi_ticks=self.omgi_ticks))
+                tosave.update(dict(gAO=self.optgain_iter, omgi_lpf=self.omgi_lpf, omgi_ticks=self.omgi_ticks))
             else:
                 tosave.update(dict(gAO=gAO.get()))         
 

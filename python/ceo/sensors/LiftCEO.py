@@ -26,7 +26,7 @@ Class implementing the LIFT method, bsed on the paper:
 """
 
 import numpy as np
-import cupy as cp
+# import cupy as cp
 import scipy.ndimage as ndimage
 from configparser import ConfigParser
 from sympy.parsing.sympy_parser import parse_expr
@@ -60,16 +60,16 @@ class LiftCEO(LIFT):
                                            ,self.gridSize))
         return array2format
 
-    def complex_amplitude(self,wavefrontObject, FT=False):
-        A0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
-        A0[0:self.nPx,0:self.nPx] = ceo.ascupy(wavefrontObject.amplitude)
-        F0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
-        F0[0:self.nPx,0:self.nPx] = ceo.ascupy(wavefrontObject.phase)
-        # F0 -= A0*cp.array(self.gs.piston())   # Remove global piston (unsure we want this for lift)
-        if FT==False:
-            return A0*cp.exp(1j*self.knumber*F0)
-        else:
-            return cp.fft.fft2(A0*cp.exp(1j*self.knumber*F0))
+    # def complex_amplitude(self,wavefrontObject, FT=False):
+    #     A0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
+    #     A0[0:self.nPx,0:self.nPx] = ceo.ascupy(wavefrontObject.amplitude)
+    #     F0 = cp.zeros((self.nPx*self.npad-1,self.nPx*self.npad-1))
+    #     F0[0:self.nPx,0:self.nPx] = ceo.ascupy(wavefrontObject.phase)
+    #     # F0 -= A0*cp.array(self.gs.piston())   # Remove global piston (unsure we want this for lift)
+    #     if FT==False:
+    #         return A0*cp.exp(1j*self.knumber*F0)
+    #     else:
+    #         return cp.fft.fft2(A0*cp.exp(1j*self.knumber*F0))
         
     def propagate(self, wavefrontObject):
         """ function that produce an image"""

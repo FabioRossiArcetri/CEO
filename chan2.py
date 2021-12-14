@@ -18,7 +18,7 @@ import pickle
 #----- Math and Scientific Computing
 import math
 import numpy as np
-import cupy as cp
+# import cupy as cp
 from scipy import ndimage
 from scipy import signal 
 from scipy.interpolate import CubicSpline
@@ -64,6 +64,7 @@ class Chan2(object):
         self.active_corr = eval(parser.get('2ndChan', 'active_corr'))[sensorId]
         try:
             self.rescaleAtmResidual = eval(parser.get('2ndChan', 'rescale_atm_residual'))[sensorId]
+            print('the rescale of the atmosphere RMS is unavailable at the moment' )
             if self.rescaleAtmResidual:
                 self.rescaleTo = eval(parser.get('2ndChan', 'rescale_to'))[sensorId]
                 self.rescaleFactor = 1
@@ -470,8 +471,8 @@ class Chan2(object):
             
     def propagate(self):
         if self.rescaleAtmResidual:
-            self.rescaleFactor = cp.divide(cp.array(self.rescaleTo),
-                                           cp.std(self.gs2phase[self.gs2inpup.astype(cp.bool)]))
+            # self.rescaleFactor = cp.divide(cp.array(self.rescaleTo),
+            #                                cp.std(self.gs2phase[self.gs2inpup.astype(cp.bool)]))
             self.gs2phase *= self.rescaleFactor
         self.gs2wfe.append(self.gs.wavefront.rms()[0])
         self.gs2segPistErr.append(self.gs.piston(where='segments')[0])
@@ -494,7 +495,7 @@ class Chan2(object):
         
         
     
-    def piston_est4(lambda0,lambda1,lambda2,s1,s2,
+    def piston_est4(self,lambda0,lambda1,lambda2,s1,s2,
                 span = [-5000*10**-9,5000*10**-9],
                 amp_conf = 0.1, # seuil de confiance
                 apriori = None, # tableau 2*n (n le nombre d'intervalles a considere pour 0
@@ -605,9 +606,8 @@ class Chan2(object):
                 else :
                    if not silent : print('Ambiguous estimation')
                    return 0
-    
                 
-            return opd_est
+            return opd_est*10**-9
         else :
             if not silent : print('No solution detected')
             return 0
