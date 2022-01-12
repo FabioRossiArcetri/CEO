@@ -55,8 +55,8 @@ class LiftCEO(LIFT):
         self.A_ML = []
         
     def CEOcompa(self,array2format):
-        array2format = zeroPad(array2format,int(array2format.shape[0]/2*(self.orig_sampling_factor*2-1)))
-        array2format = rebin(array2format,(self.gridSize\
+        array2format = self.zeroPad(array2format,int(array2format.shape[0]/2*(self.orig_sampling_factor*2-1)))
+        array2format = self.rebin(array2format,(self.gridSize\
                                            ,self.gridSize))
         return array2format
 
@@ -83,6 +83,7 @@ class LiftCEO(LIFT):
         # tmpFrame *= nPhotPerMs
         tmpFrame *= self.fluxPers*10**-3/np.sum(tmpFrame)
         self.frame += tmpFrame
+        self.setPsf(self.frame)
 
         return phase
     
@@ -101,6 +102,7 @@ class LiftCEO(LIFT):
             self.frame[nonnullPix] = rng.gamma(self.frame[nonnullPix]/(excessNoise-1))
             self.frame *= (excessNoise-1)
         self.frame += rng.normal(loc = bias, scale = RON, size = self.frame.shape)
+        self.setPsf(self.frame)
     
     
     def calibrate(self):
@@ -131,13 +133,13 @@ if __name__=='__main__':
     M2_modes_set = u"ASM_fittedKLs_doubleDiag"
     expTimeMs = 150
     
-    nPx = 256
+    nPx = 512
     
     #---- Telescope parameters
     D = 25.5                # [m] Diameter of simulated square (slightly larger than GMT diameter) 
     PupilArea = 357.0       # [m^2] Takes into account baffled segment borders
     M2_baffle = 3.5    # Circular diameter pupil mask obscuration
-    project_truss_onaxis = True
+    project_truss_onaxis = False
     tel_throughput = 0.9**4 # M1 + M2 + M3 + GMTIFS dichroic = 0.9^4 
     nseg = 7
     detectorQE = 0.5
@@ -160,6 +162,7 @@ if __name__=='__main__':
     gs.rays.rot_angle = 15*np.pi/180
     nPhotPerMs = gs.nPhoton[0] * PupilArea * 10**-3 * tel_throughput * detectorQE
     
+    
     gmt = ceo.GMT_MX(M2_mirror_modes=M2_modes_set, M2_N_MODE=M2_n_modes)
     
     gmt.M2_baffle = M2_baffle
@@ -171,6 +174,8 @@ if __name__=='__main__':
     
     lift = LiftCEO(path2liftParam,liftParamFileName)
     lift.fluxPerMs = nPhotPerMs
+    lift.fluxPers = gs.nPhoton[0] *PupilArea* \
+                                            tel_throughput * detectorQE
     
     #This is a prerequisite for lift to work.
     gmt.reset()
@@ -192,7 +197,7 @@ if __name__=='__main__':
     plt.imshow(lift.frame)
     
     # trying a reconstruction with lift
-    currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+    currentPhaseEstimate, A_ML = lift.phaseEstimation( False, 1e-6, 1e-5)
     
     #the result is given in micrometers
     print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
@@ -203,7 +208,7 @@ if __name__=='__main__':
     plt.imshow(lift.frame)
     
     # trying a reconstruction with lift
-    currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+    currentPhaseEstimate, A_ML = lift.phaseEstimation( False, 1e-6, 1e-5)
     
     #the result is given in micrometers
     print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
@@ -237,7 +242,7 @@ if __name__=='__main__':
             # inputPhase.append(lift.propagate(gs))
             lift.propagate(gs)
             
-            currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+            currentPhaseEstimate, A_ML = lift.phaseEstimation( False, 1e-6, 1e-5)
             A_ML = A_ML[:6]@R2m
             # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
             res.append(A_ML*lift.lambdaValue*10**-3/(2*np.pi))
@@ -279,7 +284,7 @@ if __name__=='__main__':
         # inputPhase.append(lift.propagate(gs))
         lift.propagate(gs)
         
-        currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+        currentPhaseEstimate, A_ML = lift.phaseEstimation( False, 1e-6, 1e-5)
         A_ML = A_ML[:6]@R2m
         # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
         res.append(A_ML*lift.lambdaValue*10**-3/(2*np.pi))

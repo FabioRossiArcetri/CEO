@@ -829,7 +829,7 @@ class Chan2(object):
             
             self.wfs.cameraNoise(self.RONval,self.background,self.excess_noise)
             self.fluxEst = np.sum(self.wfs.frame)
-            currentPhaseEstimate, A_ML = self.wfs.phaseEstimation(self.wfs.frame, False, 1e-6, 1e-5)
+            currentPhaseEstimate, A_ML = self.wfs.phaseEstimation( False, 1e-6, 1e-5)
             
             self.piston_estimate = A_ML[:6] @ self.R2m
             # self.piston_estimate *= self.gs.wavelength/(2*np.pi)
@@ -841,9 +841,9 @@ class Chan2(object):
 
 if __name__ == '__main__':
     inputFolder = '/home/alcheffot/CEO/'
-    parametersFileName = 'paramsLIFT1250-1600'
+    parametersFileName = 'paramsLIFT1250-1150'
     
-    c2 = Chan2(inputFolder,parametersFileName)
+    c2 = Chan2(inputFolder,parametersFileName,'liftHigh', 0)
     c2.chan1wl = 715*10**-9
     M2_n_modes = 675 # Karhunen-Loeve per M2 segment
     #M2_modes_set = u"ASM_DDKLs_S7OC04184_675kls"
@@ -858,18 +858,18 @@ if __name__ == '__main__':
     gmt.project_truss_onaxis = False
     simul_truss_mask=False  # If True, it applies to closed loop simulation, and slope-null calibration only (NOT IM calibration)
     
-    # c2.CalibAndRM(gmt)
+    c2.CalibAndRM(gmt)
     
     # # segpist_signal_mask = gmt.NGWS_segment_piston_mask(c2.wfs, c2.gs)
     # # c2.D2m = c2.D2.copy()
     # # c2.D2m = gmt.NGWS_apply_segment_piston_mask(c2.D2m, segpist_signal_mask['mask'])
     # # c2.wfs.segpist_signal_mask = segpist_signal_mask
     
-    # # gmt.reset()
-    # # c2.gs.reset()
-    # # c2.wfs.reset()
-    # # gmt.propagate(c2.gs)
-    # # c2.wfs.propagate(c2.gs)
+    gmt.reset()
+    c2.gs.reset()
+    c2.wfs.reset()
+    gmt.propagate(c2.gs)
+    c2.wfs.propagate(c2.gs)
     
     # # validSubApertureMap = np.abs(c2.wfs.get_sx2d())>0
     # # vectorMask = c2.mask[0][validSubApertureMap]
@@ -883,52 +883,52 @@ if __name__ == '__main__':
     # #                             c2.R2m[seg,c2.wfs.n_sspp:],
     # #                             title = 'reconstruction matrix' )
     
-    # gmt.reset()
-    # c2.gs.reset()
-    # c2.wfs.reset()
-    # gmt.M2.modes.a[seg,0] =60*10**-9
-    # gmt.M2.modes.update()
-    # gmt.propagate(c2.gs)
-    # c2.wfs.propagate(c2.gs)
-    # # c2.wfs.frame*=150
-    # # c2.wfs.cameraNoise(0,0,1)
-    # c2.wfs.process(0.001)
-    # # c2.process()
-    # plt.figure(1)
-    # plt.clf()
-    # # plt.imshow(c2.wfs.frame-c2.wfs.referenceFrame)
-    # plt.imshow(c2.wfs.frame)
+    gmt.reset()
+    c2.gs.reset()
+    c2.wfs.reset()
+    gmt.M2.modes.a[1,0] =60*10**-9
+    gmt.M2.modes.update()
+    gmt.propagate(c2.gs)
+    c2.wfs.propagate(c2.gs)
+    # c2.wfs.frame*=150
+    # c2.wfs.cameraNoise(0,0,1)
+    c2.wfs.process()
+    # c2.process()
+    plt.figure(1)
+    plt.clf()
+    # plt.imshow(c2.wfs.frame-c2.wfs.referenceFrame)
+    plt.imshow(c2.wfs.frame)
     # # c2.pyr_display_signals_base(c2.wfs,*c2.wfs.get_measurement(out_format='list' ),
     # #                             title = 'signal')
     
     # #sweep test
     # # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
-    # # wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
-    # piston = np.linspace(-715,715,21)*10**-9
-    # seg = 1
+    wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
+    piston = np.linspace(-715,715,21)*10**-9
+    seg = 1
 
-    # recall = []
-    # recmwl = []
-    # for p in piston:
-    #     c2.gs.reset()
-    #     gmt.reset()
-    #     gmt.M2.modes.a[seg,0] =p
-    #     gmt.M2.modes.update()
-    #     c2.wfs.reset()
-    #     gmt.propagate(c2.gs)
-    #     c2.wfs.propagate(c2.gs)
-    #     c2.wfs.frame*=150
-    #     c2.process()
-    #     # measvec = c2.wfs.get_measurement()
-    #     # rec = c2.R2m @ measvec
-    #     rec = c2.piston_estimate
-    #     recall.append(rec[seg])
-    #     # if p in wlmult:
-    #     #     recmwl.append(rec[seg])
+    recall = []
+    recmwl = []
+    for p in piston:
+        c2.gs.reset()
+        gmt.reset()
+        gmt.M2.modes.a[seg,0] =p
+        gmt.M2.modes.update()
+        c2.wfs.reset()
+        gmt.propagate(c2.gs)
+        c2.wfs.propagate(c2.gs)
+        c2.wfs.frame*=150
+        c2.process()
+        # measvec = c2.wfs.get_measurement()
+        # rec = c2.R2m @ measvec
+        rec = c2.piston_estimate
+        recall.append(rec[seg])
+        # if p in wlmult:
+        #     recmwl.append(rec[seg])
     
-    # plt.figure(2)
-    # plt.clf()
-    # plt.plot(piston,recall)
+    plt.figure(2)
+    plt.clf()
+    plt.plot(piston,recall)
     # plt.plot(wlmult,recmwl,'o' )
     
     
