@@ -305,49 +305,50 @@ if __name__=='__main__':
     # hdu = fits.PrimaryHDU(inputPhase)
     # hdul = fits.HDUList(hdu)
     # hdul.writeto('gmtInputPhase.fits',overwrite= True)
-    # res = []
-    # #Now I would like to make sure CEO and lift speak the same language regarding the segments
+    res = []
+    #Now I would like to make sure CEO and lift speak the same language regarding the segments
     # for s in range(6):
-    #     gmt.reset()
-    #     gs.reset()
-    #     lift.reset()
-    #     gmt.M2.modes.a[s,0] = 150*10**-9
-    #     gmt.M2.modes.update()
-    #     gmt.propagate(gs)
-    #     # inputPhase.append(lift.propagate(gs))
-    #     lift.propagate(gs)
+    for s in [6]:
+        gmt.reset()
+        gs.reset()
+        lift.reset()
+        gmt.M2.modes.a[s,0] = 150*10**-9
+        gmt.M2.modes.update()
+        gmt.propagate(gs)
+        # inputPhase.append(lift.propagate(gs))
+        lift.propagate(gs)
         
-    #     currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
-    #     # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
-    #     res.append(A_ML[:6]*lift.lambdaValue*10**-3/(2*np.pi))
+        currentPhaseEstimate, A_ML = lift.phaseEstimation(lift.frame, False, 1e-6, 1e-5)
+        # print(A_ML[:6]*wl2nd*10**9/(2*np.pi))
+        res.append(A_ML[:6]*lift.lambdaValue*10**-3/(2*np.pi))
         
         
-    # plt.figure(6)
-    # plt.clf()
-    # plt.plot(res,'+-' )
-    # plt.ylabel("retrieved piston in $\mu$m")
-    # plt.xlabel("true piston applied in $\mu$m")
-    # plt.legend(['S0','S1','S2','S3','S4','S5'])
-    # plt.tight_layout()
+    plt.figure(6)
+    plt.clf()
+    plt.plot(res,'+-' )
+    plt.ylabel("retrieved piston in $\mu$m")
+    plt.xlabel("true piston applied in $\mu$m")
+    plt.legend(['S0','S1','S2','S3','S4','S5'])
+    plt.tight_layout()
     
-    # #lift does not number the segments the same way hene I use the reconstruction Matrix
-    # #to make the correspondance between CEO and lift
-    # R2m = np.zeros((6,6))
-    # R2m[0,1] = 1
-    # R2m[1,0] = 1
-    # R2m[2,5] = 1
-    # R2m[3,4] = 1
-    # R2m[4,3] = 1
-    # R2m[5,2] = 1
+    #lift does not number the segments the same way hene I use the reconstruction Matrix
+    #to make the correspondance between CEO and lift
+    R2m = np.zeros((6,6))
+    R2m[0,1] = 1
+    R2m[1,0] = 1
+    R2m[2,5] = 1
+    R2m[3,4] = 1
+    R2m[4,3] = 1
+    R2m[5,2] = 1
     
-    # resCEO = [a@R2m for a in res]
-    # plt.figure(7)
-    # plt.clf()
-    # plt.plot(resCEO,'+-' )
-    # plt.ylabel("retrieved piston in $\mu$m")
-    # plt.xlabel("true piston applied in $\mu$m")
-    # plt.legend(['S0','S1','S2','S3','S4','S5'])
-    # plt.tight_layout()
+    resCEO = [a@R2m for a in res]
+    plt.figure(7)
+    plt.clf()
+    plt.plot(resCEO,'+-' )
+    plt.ylabel("retrieved piston in $\mu$m")
+    plt.xlabel("true piston applied in $\mu$m")
+    plt.legend(['S0','S1','S2','S3','S4','S5'])
+    plt.tight_layout()
     
 
 

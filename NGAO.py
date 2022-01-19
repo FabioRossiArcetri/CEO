@@ -96,17 +96,18 @@ def olTF(gi, nu, Te, tau, ffi):
 
 
 class NGAO(object):
-    def __init__(self, path, parametersFile):
+    def __init__(self, path, parametersFile,load = False):
         self.tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
         self.path = path
         parser = ConfigParser()
-        parser.read(path + parametersFile + '.ini')        
-        print(path + parametersFile + '.ini')
+        parser.read(path +'/'+ parametersFile + '.ini')        
+        print(path +'/'+ parametersFile + '.ini')
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
-        self.tempFolder = path+'savedir{:.0f}/'.format(self.GPUnum)
-        os.makedirs(self.tempFolder+self.tnString,exist_ok=True)
-        
-        shutil.copy(path+parametersFile+'.ini', self.tempFolder+self.tnString)
+        if not(load):
+            self.tempFolder = path+'/savedir{:.0f}/'.format(self.GPUnum)+self.tnString
+            os.makedirs(self.tempFolder,exist_ok=True)
+            
+            shutil.move(path+'/'+parametersFile+'.ini', self.tempFolder)
         # ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+parametersFile+'.ini'
         # os.system('cp '+ path+parametersFile+'.ini ' + ini_temp_filename)
         
@@ -239,6 +240,10 @@ class NGAO(object):
             self.ogtl_Ts = eval(parser.get('pyramid1stChan', 'ogtl_Ts'))
             self.ogtl_gain = eval(parser.get('pyramid1stChan', 'ogtl_gain'))
             self.ogtl_detrend_deg = eval(parser.get('pyramid1stChan', 'ogtl_detrend_deg'))
+            if parser.has_option('pyramid1stChan','probeInjectionStarts'):
+                self.ogtl_probeInjectionStarts = eval(parser.get('pyramid1stChan','probeInjectionStarts'))
+            else:
+                self.ogtl_probeInjectionStarts = 0.25
             
             self.use_presaved_ogtl = eval(parser.get('pyramid1stChan', 'use_presaved_ogtl'))
             self.omgi = eval(parser.get('pyramid1stChan', 'omgi'))
@@ -266,8 +271,14 @@ class NGAO(object):
             if self.secondChannelType == 'lift':
                 sectionName = eval(parser.get('2ndChan','liftSectionName' ))
                 
-                self.doubleChan2 = [ Chan2(path, parametersFile,sectionName[0],0),
-                              Chan2(path, parametersFile,sectionName[1],1)]
+                # self.doubleChan2 = [ Chan2(path, parametersFile,sectionName[0],0),
+                #               Chan2(path, parametersFile,sectionName[1],1)]
+                if not(load):
+                    self.doubleChan2 = [ Chan2(self.tempFolder, parametersFile,sectionName[0],0),
+                                  Chan2(self.tempFolder, parametersFile,sectionName[1],1)]
+                else:
+                    self.doubleChan2 = [ Chan2(path, parametersFile,sectionName[0],0),
+                                  Chan2(path, parametersFile,sectionName[1],1)]
                 self.chan2 = self.doubleChan2[0]
                 self.doubleChan2[0].chan1wl = self.gs.wavelength
                 self.doubleChan2[1].chan1wl = self.gs.wavelength
@@ -301,6 +312,9 @@ class NGAO(object):
                 print('warning: not enough atmosphere, increasing the atm_duration')
                 # self.atm_t0 = self.atm_duration-self.totSimulTime
                 self.atm_duration = self.totSimulTime+self.atm_t0
+            self.n_duration = np.ceil(int(self.atm_duration))
+            self.atm_duration = 1.0
+            
             self.atm_t0 /= self.Tsim
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
             self.zen_angle = eval(parser.get('turbulence', 'zen_angle'))
@@ -315,7 +329,7 @@ class NGAO(object):
             else:
                 self.r0 = eval(parser.get('turbulence', 'r0'))
                 self.r0a = self.r0 / np.cos( self.zen_angle*np.pi/180 )**(3./5.)
-                self.seeing = 0.9759*500*10**-9/(self.r0a * ceo.constants.ARCSEC2RAD)
+                self.seeing = 0.9759*500*10**-9/self.r0a * ceo.constants.RAD2ARCSEC
             self.wind_speed = self.wind_scale[0] * np.array(eval(parser.get('turbulence', 'wind_speed')))
             self.wind_direction = np.array(eval(parser.get('turbulence', 'wind_direction')))
             self.meanV = np.sum(self.wind_speed**(5.0/3.0)*self.xi0)**(3./5.)
@@ -849,8 +863,9 @@ class NGAO(object):
             self.atm = ceo.Atmosphere(self.r0,self.L0,len(self.altitude),self.altitude,
                                       self.xi0,self.wind_speed,self.wind_direction,
                              L=26,NXY_PUPIL=self.nPx,fov=0.0*ceo.constants.ARCMIN2RAD, 
-                             filename=self.atm_fullname, duration=self.atm_duration)
-                                 #duration=5.0, N_DURATION=6)
+                             filename=self.atm_fullname, 
+                             # duration=self.atm_duration)
+                              duration=self.atm_duration, N_DURATION=self.n_duration)
             
             if self.simul_variable_seeing:
                 self.zen_angle = 0
@@ -1354,13 +1369,13 @@ class NGAO(object):
 
         if self.seg_pist_scramble:
             # Generate piston scramble
-            rng = np.random.default_rng()
-            # pistscramble  = np.random.normal(loc=0.0, scale=1, size=self.nseg)
-            # pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            pistscramble = (rng.random(self.nseg)-0.5)*self.pist_scramble_rms
-            # pistscramble -= np.mean(pistscramble)
-            pistscramble[6] = 0
-            # pistscramble -= pistscramble[6]  # relative to central segment
+            # rng = np.random.default_rng()
+            pistscramble  = np.random.normal(loc=0.0, scale=1, size=self.nseg)
+            pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
+            # pistscramble = (rng.random(self.nseg)-0.5)*self.pist_scramble_rms
+            pistscramble -= np.mean(pistscramble)
+            # pistscramble[6] = 0
+            pistscramble -= pistscramble[6]  # relative to central segment
             # Apply it to M2
             self.gmt.M2.motion_CS.origin[:,2] = pistscramble
             self.gmt.M2.motion_CS.update()
@@ -1434,7 +1449,7 @@ class NGAO(object):
             self.wlstartInit = 0      
 
         if self.ogtl_simul:
-            probeSigInit = AOinit+round(0.25/self.Tsim) #SPPctrlInit+9          # Start injection probe signals on selected modes 
+            probeSigInit = AOinit+round(self.ogtl_probeInjectionStarts/self.Tsim) #SPPctrlInit+9          # Start injection probe signals on selected modes 
             # ogtl_Ts_1 = 500e-3 # sampling during bootstrap [s]
             ogtl_sz = np.int(self.ogtl_Ts /self.Tsim)
             ogtl_count = 0
@@ -2198,7 +2213,7 @@ class NGAO(object):
                 tosave.update(dict(sr_iter=sr_iter, im_centr_iter=im_centr_iter))
                 
         # filename='./savedir'+str(self.GPUnum)+'/simul_results.npz'
-        filename = self.tempFolder+self.tnString+'/simul_results.npz'
+        filename = self.tempFolder+'/simul_results.npz'
         np.savez_compressed(filename, **tosave)
         
         #PSF stuff:
@@ -2212,7 +2227,7 @@ class NGAO(object):
                 tosavePSF.update(dict(PSFle=PSFle.get()))
 
         if self.coro_psf or self.do_psf_le:
-            filename=self.tempFolder+self.tnString+'/psf_results.npz'
+            filename=self.tempFolder+'/psf_results.npz'
             np.savez_compressed(filename, **tosavePSF)
         self.tid.toc()
         self.housekeep_saveTime = self.tid.elapsedTime*1e-3
@@ -2223,7 +2238,7 @@ class NGAO(object):
         # tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
         # tnpath = os.path.join(self.TN_dir)
         os.makedirs(self.TN_dir,exist_ok=True)
-        shutil.move(self.tempFolder+self.tnString, self.TN_dir)
+        shutil.move(self.tempFolder, self.TN_dir)
         # os.system('cp ./savedir' + str(self.GPUnum)+ '/* ' + tnpath )  
         print('\n saved in :{}'.format(self.TN_dir+self.tnString))
         self.tid.toc()
@@ -2292,7 +2307,7 @@ class NGAO(object):
             self.SPP2ndChInit = data['SPP2ndChInit']
                         
             self.AOinit = data['AOinit']
-            self.a_M2_iter = data['a_M2_iter']
+            # self.a_M2_iter = data['a_M2_iter']
             self.da_M2_iter = data['da_M2_iter']
             self.a_OLCL_iter = data['a_OLCL_iter']
             self.wfe_gs_iter = data['wfe_gs_iter']

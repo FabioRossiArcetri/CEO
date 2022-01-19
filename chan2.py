@@ -45,8 +45,10 @@ class Chan2(object):
     """object meant to wrap everything the second channel may do"""
     
     def __init__(self,path,parametersFile,sectionName = '',sensorId = 0):
+        
+        print(path+'/'+parametersFile+'.ini' )
         parser = ConfigParser()
-        parser.read(path + parametersFile + '.ini')
+        parser.read(path +'/'+ parametersFile + '.ini')
         
         self.chan1wl = []
         self.pistEstTime = []
@@ -159,7 +161,7 @@ class Chan2(object):
             
         elif self.sensorType.lower() == LIFT:
             self.excess_noise = eval(parser.get('2ndChan','excess_noise'))[sensorId]
-            self.wfs = ceo.sensors.LiftCEO( path, parametersFile,sectionName)
+            self.wfs = ceo.sensors.LiftCEO( path+'/', parametersFile,sectionName)
             #dual wavelength setup
             if parser.has_option('2ndChan','dualWL2ndChan'):
                 self.dualWL2ndChan = eval(parser.get('2ndChan', 'dualWL2ndChan'))
@@ -830,6 +832,7 @@ class Chan2(object):
             self.wfs.cameraNoise(self.RONval,self.background,self.excess_noise)
             self.fluxEst = np.sum(self.wfs.frame)
             currentPhaseEstimate, A_ML = self.wfs.phaseEstimation( False, 1e-6, 1e-5)
+
             
             self.piston_estimate = A_ML[:6] @ self.R2m
             # self.piston_estimate *= self.gs.wavelength/(2*np.pi)
@@ -903,9 +906,11 @@ if __name__ == '__main__':
     
     # #sweep test
     # # piston = np.linspace(-5*715,5*(715+1),201)*10**-9
+
     wlmult = np.linspace(-5*715,5*(715+1),11)*10**-9
     piston = np.linspace(-715,715,21)*10**-9
     seg = 1
+
 
     recall = []
     recmwl = []

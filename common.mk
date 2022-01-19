@@ -1,6 +1,6 @@
 CEOPATH 	= $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-CUDAPATH	= /usr/local/cuda
-PYTHONPATH      = $(HOME)/anaconda
+CUDAPATH	= /usr/local/cuda-10.2
+PYTHONPATH      = /opt/anaconda3/lib/python3.8
 CEOPYPATH	= $(CEOPATH)/python/ceo
 NVCC          	= $(CUDAPATH)/bin/nvcc
 CUDALIBPATH   	= $(CUDAPATH)/lib64
@@ -15,7 +15,7 @@ CPIF	    	= $(NOWEBPATH)/bin/cpif
 TEXTOPDF  	= pdflatex
 NVCCFLAGS	= -DCEOPATH='"$(CEOPATH)"' -lineinfo -Xcompiler '-ansi,-D_GNU_SOURCE,-fwrapv,-fPIC,-fno-omit-frame-pointer,-pthread,-fno-strict-aliasing,-O3'
 LIBS 		= -L$(CEOPATH)/lib $(CUDALIBPATH:%=-L%) -lceo -lcurl -ljsmn $(CUDALIBS:%=-l%)
-INCS		= -I. -I$(CEOPATH)/include $(CUDAINCPATH:%=-I%) -I$(PYTHONPATH)/include #$(MATLABINCS)
+INCS		= -I. -I$(CEOPATH)/include $(CUDAINCPATH:%=-I%) -I/opt/anaconda3/include/python3.8 -I/opt/anaconda3/lib/python3.8/site-packages/numpy/core/include -I$(PYTHONPATH)/include #$(MATLABINCS)
 SHELL		= /bin/bash
 
 -include $(CEOPATH)/user.mk
