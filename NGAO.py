@@ -96,18 +96,25 @@ def olTF(gi, nu, Te, tau, ffi):
 
 
 class NGAO(object):
-    def __init__(self, path, parametersFile,load = False):
+    def __init__(self, path, parametersFile,load = False,singleSim = False):
         self.tnString = datetime.today().strftime('%Y%m%d_%H%M%S')
         self.path = path
         parser = ConfigParser()
         parser.read(path +'/'+ parametersFile + '.ini')        
         print(path +'/'+ parametersFile + '.ini')
         self.GPUnum = eval(parser.get('general', 'GPUnum'))
-        if not(load):
+        
+        if singleSim:
+            self.tempFolder = path+'/savedir{:.0f}/'.format(self.GPUnum)+self.tnString
+            os.makedirs(self.tempFolder,exist_ok=True)
+            shutil.copy(path+'/'+parametersFile+'.ini', self.tempFolder)
+        elif not(load):
             self.tempFolder = path+'/savedir{:.0f}/'.format(self.GPUnum)+self.tnString
             os.makedirs(self.tempFolder,exist_ok=True)
             
             shutil.move(path+'/'+parametersFile+'.ini', self.tempFolder)
+            
+
         # ini_temp_filename='./savedir'+str(self.GPUnum)+'/'+parametersFile+'.ini'
         # os.system('cp '+ path+parametersFile+'.ini ' + ini_temp_filename)
         
@@ -150,6 +157,7 @@ class NGAO(object):
         self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))
         if self.seg_pist_scramble:
             self.pist_scramble_rms = eval(parser.get('general', 'pist_scramble_rms'))
+            self.scramble_seed = eval(parser.get('general', 'scrambleSeed'))
         self.M2_modes_scramble = eval(parser.get('general', 'M2_modes_scramble'))
         self.save_telemetry = eval(parser.get('general', 'save_telemetry'))        
         self.do_psf_le = eval(parser.get('general', 'do_psf_le'))        
@@ -1369,16 +1377,17 @@ class NGAO(object):
 
         if self.seg_pist_scramble:
             # Generate piston scramble
-            # rng = np.random.default_rng()
-            pistscramble  = np.random.normal(loc=0.0, scale=1, size=self.nseg)
+            rng = np.random.default_rng(self.scramble_seed)
+            pistscramble  = rng.normal(loc=0.0, scale=1, size=self.nseg)
             pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            # pistscramble = (rng.random(self.nseg)-0.5)*self.pist_scramble_rms
+            pistscramble[6] *= 0
             pistscramble -= np.mean(pistscramble)
-            # pistscramble[6] = 0
-            pistscramble -= pistscramble[6]  # relative to central segment
+            # pistscramble -= pistscramble[6]  # relative to central segment
+            
             # Apply it to M2
             self.gmt.M2.motion_CS.origin[:,2] = pistscramble
             self.gmt.M2.motion_CS.update()
+            
         if self.seg_pist_scramble == 'byhand':
             pistscramble = self.pist_scramble_rms
             self.gmt.M2.motion_CS.origin[:,2] = pistscramble
@@ -2307,8 +2316,8 @@ class NGAO(object):
             self.SPP2ndChInit = data['SPP2ndChInit']
                         
             self.AOinit = data['AOinit']
-            # self.a_M2_iter = data['a_M2_iter']
-            self.da_M2_iter = data['da_M2_iter']
+            self.a_M2_iter = data['a_M2_iter']
+            # self.da_M2_iter = data['da_M2_iter']
             self.a_OLCL_iter = data['a_OLCL_iter']
             self.wfe_gs_iter = data['wfe_gs_iter']
             self.spp_gs_iter = data['spp_gs_iter']

@@ -457,12 +457,12 @@ class Chan2(object):
             self.wfs.mask = self.wfs.CEOcompa(gmtMask)
             
             self.R2m = np.zeros((6,7))
-            self.R2m[0,1] = 1
-            self.R2m[1,0] = 1
-            self.R2m[2,5] = 1
-            self.R2m[3,4] = 1
-            self.R2m[4,3] = 1
-            self.R2m[5,2] = 1
+            self.R2m[0,4] = 1
+            self.R2m[1,3] = 1
+            self.R2m[2,2] = 1
+            self.R2m[3,1] = 1
+            self.R2m[4,0] = 1
+            self.R2m[5,5] = 1
             
             #dual wavelength setup
             if self.dualWL2ndChan and self.starcolor == 'monochromatic':
@@ -589,10 +589,12 @@ class Chan2(object):
         mask2 = np.logical_and(signal2 >= s2-amp_conf, signal2 < s2+amp_conf)
             #
         mask = mask1*mask2*mask0
+        # plt.figure()
         # plt.plot(x,mask0)
         # plt.plot(x,mask1)
         # plt.plot(x,mask2)
         # plt.plot(x,mask)
+        # plt.pause(0.5)
         #stop
         #detect intervals & select potential solutions
         idx_est = (mask).nonzero()[0]
