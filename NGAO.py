@@ -1380,18 +1380,23 @@ class NGAO(object):
             rng = np.random.default_rng(self.scramble_seed)
             pistscramble  = rng.normal(loc=0.0, scale=1, size=self.nseg)
             pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            pistscramble[6] *= 0
+            #pistscramble[6] *= 0
             pistscramble -= np.mean(pistscramble)
             # pistscramble -= pistscramble[6]  # relative to central segment
+
+            #--- Uncomment below to override the pistscramble 
+            #pistscramble = np.array([ 6.19271818e-07, -1.95529223e-07, -6.72296286e-07, 
+            #                          5.87066093e-07, -9.47358899e-09, -6.53098380e-07, 
+            #                          3.24059566e-07])
             
-            # Apply it to M2
-            self.gmt.M2.motion_CS.origin[:,2] = pistscramble
-            self.gmt.M2.motion_CS.update()
+            # Apply it to M1
+            self.gmt.M1.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M1.motion_CS.update()
             
         if self.seg_pist_scramble == 'byhand':
             pistscramble = self.pist_scramble_rms
-            self.gmt.M2.motion_CS.origin[:,2] = pistscramble
-            self.gmt.M2.motion_CS.update()
+            self.gmt.M1.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M1.motion_CS.update()
 
         if self.M2_modes_scramble:
             self.M2modes_scramble = np.random.normal(loc=0.0, scale=1, size=(self.nseg,self.n_mode))
