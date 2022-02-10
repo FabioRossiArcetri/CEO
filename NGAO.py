@@ -323,10 +323,9 @@ class NGAO(object):
                 print('warning: not enough atmosphere, increasing the atm_duration')
                 # self.atm_t0 = self.atm_duration-self.totSimulTime
                 self.atm_duration = self.totSimulTime+self.atm_t0
-            self.n_duration = np.ceil(int(self.atm_duration))
+            self.n_duration = int(np.ceil(self.atm_duration))
             self.atm_duration = 1.0
             
-            # self.atm_t0 /= self.Tsim
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
             self.zen_angle = eval(parser.get('turbulence', 'zen_angle'))
             
@@ -340,7 +339,7 @@ class NGAO(object):
             else:
                 self.r0 = eval(parser.get('turbulence', 'r0'))
                 self.r0a = self.r0 / np.cos( self.zen_angle*np.pi/180 )**(3./5.)
-                self.seeing = 0.9759*500*10**-9/self.r0a * ceo.constants.RAD2ARCSEC
+                self.seeing = 0.9759*500e-9/self.r0a * ceo.constants.RAD2ARCSEC
             self.wind_speed = self.wind_scale[0] * np.array(eval(parser.get('turbulence', 'wind_speed')))
             self.wind_direction = np.array(eval(parser.get('turbulence', 'wind_direction')))
             self.meanV = np.sum(self.wind_speed**(5.0/3.0)*self.xi0)**(3./5.)
@@ -883,7 +882,9 @@ class NGAO(object):
                 self.seeing_init = 0.5
                 self.seeing_max = 1.0
                 self.vs_T = 60 # period of sinusoidal (simulation time should be up to half this amount)
-            
+
+
+    def update_slopenull(self, figsize = (15,5)):
         if self.simul_onaxis_AO and self.simul_truss_mask:
             self.gmt.project_truss_onaxis = True
             self.gs.reset()
@@ -894,6 +895,8 @@ class NGAO(object):
             self.wfs.reset()
             self.wfs.set_reference_measurement(self.gs)
             
+            #TODO: Include here code to update the slope null vector of 2nd channel WFS
+            #      under the presence of truss shadows!!
 
             if self.VISU:
                 ## Visualize reference slope vector in 2D (for a flat WF)
@@ -1381,20 +1384,25 @@ class NGAO(object):
         if self.seg_pist_scramble:
             # Generate piston scramble
             rng = np.random.default_rng(self.scramble_seed)
-            pistscramble  = rng.uniform(-2.0*self.gs.wavelength,+2.0*self.gs.wavelength,size=self.nseg-1)/2
+            pistscramble  = rng.uniform(-2.0*self.gs.wavelength,+2.0*self.gs.wavelength,size=self.nseg)/2
+            # pistscramble  = rng.normal(loc=0.0, scale=1, size=self.nseg)
             # pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            # pistscramble[6] *= 0
-            # pistscramble -= np.mean(pistscramble)
-            # pistscramble -= pistscramble[6]  # relative to central segment
-            
-            # Apply it to M2
-            self.gmt.M2.motion_CS.origin[:-1,2] = pistscramble
-            self.gmt.M2.motion_CS.update()
+            #pistscramble[6] *= 0
+            pistscramble -= np.mean(pistscramble)
+
+            #--- Uncomment below to override the pistscramble 
+            #pistscramble = np.array([ 6.19271818e-07, -1.95529223e-07, -6.72296286e-07, 
+            #                          5.87066093e-07, -9.47358899e-09, -6.53098380e-07, 
+            #                          3.24059566e-07])
+
+            # Apply it to M1
+            self.gmt.M1.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M1.motion_CS.update()
             
         if self.seg_pist_scramble == 'byhand':
             pistscramble = self.pist_scramble_rms
-            self.gmt.M2.motion_CS.origin[:,2] = pistscramble
-            self.gmt.M2.motion_CS.update()
+            self.gmt.M1.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M1.motion_CS.update()
 
         if self.M2_modes_scramble:
             self.M2modes_scramble = np.random.normal(loc=0.0, scale=1, size=(self.nseg,self.n_mode))
