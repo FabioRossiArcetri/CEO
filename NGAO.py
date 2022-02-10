@@ -320,10 +320,10 @@ class NGAO(object):
                 print('warning: not enough atmosphere, increasing the atm_duration')
                 # self.atm_t0 = self.atm_duration-self.totSimulTime
                 self.atm_duration = self.totSimulTime+self.atm_t0
-            self.n_duration = np.ceil(int(self.atm_duration))
+            self.n_duration = int(np.ceil(self.atm_duration))
             self.atm_duration = 1.0
             
-            self.atm_t0 /= self.Tsim
+            #self.atm_t0 /= self.Tsim  #<------- THIS LINE WAS A MISTAKE!
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
             self.zen_angle = eval(parser.get('turbulence', 'zen_angle'))
             
@@ -337,7 +337,7 @@ class NGAO(object):
             else:
                 self.r0 = eval(parser.get('turbulence', 'r0'))
                 self.r0a = self.r0 / np.cos( self.zen_angle*np.pi/180 )**(3./5.)
-                self.seeing = 0.9759*500*10**-9/self.r0a * ceo.constants.RAD2ARCSEC
+                self.seeing = 0.9759*500e-9/self.r0a * ceo.constants.RAD2ARCSEC
             self.wind_speed = self.wind_scale[0] * np.array(eval(parser.get('turbulence', 'wind_speed')))
             self.wind_direction = np.array(eval(parser.get('turbulence', 'wind_direction')))
             self.meanV = np.sum(self.wind_speed**(5.0/3.0)*self.xi0)**(3./5.)
@@ -880,7 +880,9 @@ class NGAO(object):
                 self.seeing_init = 0.5
                 self.seeing_max = 1.0
                 self.vs_T = 60 # period of sinusoidal (simulation time should be up to half this amount)
-            
+
+
+    def update_slopenull(self, figsize = (15,5))
         if self.simul_onaxis_AO and self.simul_truss_mask:
             self.gmt.project_truss_onaxis = True
             self.gs.reset()
@@ -891,6 +893,8 @@ class NGAO(object):
             self.wfs.reset()
             self.wfs.set_reference_measurement(self.gs)
             
+            #TODO: Include here code to update the slope null vector of 2nd channel WFS
+            #      under the presence of truss shadows!!
 
             if self.VISU:
                 ## Visualize reference slope vector in 2D (for a flat WF)
