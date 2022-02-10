@@ -157,7 +157,10 @@ class NGAO(object):
         self.seg_pist_scramble = eval(parser.get('general', 'seg_pist_scramble'))
         if self.seg_pist_scramble:
             self.pist_scramble_rms = eval(parser.get('general', 'pist_scramble_rms'))
-            self.scramble_seed = eval(parser.get('general', 'scrambleSeed'))
+            if parser.has_option('general','scrambleSeed'):
+                self.scramble_seed = eval(parser.get('general', 'scrambleSeed'))
+            else:
+                self.scramble_seed = 654321
         self.M2_modes_scramble = eval(parser.get('general', 'M2_modes_scramble'))
         self.save_telemetry = eval(parser.get('general', 'save_telemetry'))        
         self.do_psf_le = eval(parser.get('general', 'do_psf_le'))        
@@ -323,7 +326,7 @@ class NGAO(object):
             self.n_duration = np.ceil(int(self.atm_duration))
             self.atm_duration = 1.0
             
-            self.atm_t0 /= self.Tsim
+            # self.atm_t0 /= self.Tsim
             self.wind_scale = eval(parser.get('turbulence', 'wind_scale'))
             self.zen_angle = eval(parser.get('turbulence', 'zen_angle'))
             
@@ -1378,14 +1381,14 @@ class NGAO(object):
         if self.seg_pist_scramble:
             # Generate piston scramble
             rng = np.random.default_rng(self.scramble_seed)
-            pistscramble  = rng.normal(loc=0.0, scale=1, size=self.nseg)
-            pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
-            pistscramble[6] *= 0
-            pistscramble -= np.mean(pistscramble)
+            pistscramble  = rng.uniform(-2.0*self.gs.wavelength,+2.0*self.gs.wavelength,size=self.nseg-1)/2
+            # pistscramble *= self.pist_scramble_rms/np.std(pistscramble)
+            # pistscramble[6] *= 0
+            # pistscramble -= np.mean(pistscramble)
             # pistscramble -= pistscramble[6]  # relative to central segment
             
             # Apply it to M2
-            self.gmt.M2.motion_CS.origin[:,2] = pistscramble
+            self.gmt.M2.motion_CS.origin[:-1,2] = pistscramble
             self.gmt.M2.motion_CS.update()
             
         if self.seg_pist_scramble == 'byhand':
@@ -1850,6 +1853,10 @@ class NGAO(object):
                                                                                   apriori = self.chan2.aprio.copy(),
                                                                                   amp_conf = self.chan2.amp_conf
                                                                                   )
+                            if np.abs(self.doubleChan2[0].forCorrection[ss])<= \
+                                self.doubleChan2[0].aprioriTolerence:
+                                self.doubleChan2[0].forCorrection[ss] *=0
+                        
                         if self.chan2.active_corr:
                             comm_buffer[self.KL0_idx,:] += cp.asarray(self.doubleChan2[0].forCorrection[0:6,np.newaxis])
 
@@ -2322,7 +2329,7 @@ class NGAO(object):
             self.wfe_gs_iter = data['wfe_gs_iter']
             self.spp_gs_iter = data['spp_gs_iter']
             self.seg_wfe_gs_iter = data['seg_wfe_gs_iter']
-            self.wfs_meas_iter = data['wfs_meas_iter']
+            # self.wfs_meas_iter = data['wfs_meas_iter']
             self.wfgrad_iter = data['wfgrad_iter']
             self.seg_wfgrad_iter = data['seg_wfgrad_iter']
 
